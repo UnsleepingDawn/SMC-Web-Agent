@@ -1,0 +1,21 @@
+{
+  "zh_cn": {
+    "title": "1999-Spring-第0周总结",
+    "content": [
+      [
+        { "tag": "text", "text": "1. 周报提交情况:", "style": ["bold", "underline"] }
+      ],
+      [
+        { "tag": "a", "href": "http://www.feishu.cn", "text": "SMC周报链接" }
+      ],
+      [
+        { "tag": "text", "text": "已提交: ", "style": ["bold"] },
+        { "tag": "text", "text": "" }
+      ],
+      [
+        { "tag": "text", "text": "未提交: ", "style": ["bold"] },
+        { "tag": "text", "text": "" }
+      ]
+    ]
+  }
+}

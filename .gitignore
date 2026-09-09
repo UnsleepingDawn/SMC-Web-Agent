@@ -1,0 +1,79 @@
+server/.venv/
+server/__pycache__
+server/.env
+server/uploads
+.mypy_cache/
+__pycache__/
+.vscode/
+
+# dependencies
+client/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+client/coverage
+
+# next.js
+client/.next/
+client/out/
+
+# production
+client/build
+docker-compose.yml
+ecs-task-definitions/
+
+# misc
+.DS_Store
+*.pem
+celerybeat-schedule.db
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# local tooling, backups, and generated dependencies
+.claude/
+.cursor/
+**/*_bk/
+**/*_backup/
+**/node_modules/
+**/.venv/
+.next/
+out/
+dist/
+coverage/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# local runtime data and credentials
+server/uploads/
+*.key
+*.p12
+*.pfx
+*.sqlite
+*.sqlite3
+*.db
+
+# personal Claude Code instructions (not shared with collaborators)
+CLAUDE.md
+TODO.md

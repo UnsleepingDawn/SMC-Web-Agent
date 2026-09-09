@@ -1,0 +1,136 @@
+"use client";
+
+import { useState } from "react";
+import { Loader2, Pencil, Send } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { MessagePreview } from "@/components/common/MessagePreview";
+import { previewSeminar, pushSeminar } from "@/lib/api";
+import { PostMessage, Seminar, WEEKDAY_NAMES } from "@/lib/schema";
+import { toast } from "sonner";
+
+interface SeminarCardProps {
+	seminar: Seminar;
+	onEdit: (seminar: Seminar) => void;
+	onChanged: () => void;
+}
+
+export function SeminarCard({ seminar, onEdit, onChanged }: SeminarCardProps) {
+	const [receiveId, setReceiveId] = useState("");
+	const [preview, setPreview] = useState<PostMessage | null>(null);
+	const [isPreviewing, setIsPreviewing] = useState(false);
+	const [isPushing, setIsPushing] = useState(false);
+
+	const handlePreview = async () => {
+		setIsPreviewing(true);
+		try {
+			const response = await previewSeminar(seminar.semester_id, seminar.week);
+			setPreview(response.payload);
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "渲染预告失败。");
+		} finally {
+			setIsPreviewing(false);
+		}
+	};
+
+	const handlePush = async () => {
+		if (!receiveId.trim()) {
+			toast.error("请填写接收者 ID（群 chat_id 或用户 open_id）。");
+			return;
+		}
+		setIsPushing(true);
+		try {
+			await pushSeminar(seminar.semester_id, seminar.week, {
+				receive_id: receiveId.trim(),
+			});
+			toast.success("已提交推送任务。");
+			onChanged();
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "推送失败。");
+		} finally {
+			setIsPushing(false);
+		}
+	};
+
+	return (
+		<Card>
+			<CardHeader>
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					<div className="space-y-1">
+						<CardTitle className="text-lg">
+							第 {seminar.week} 周 · {WEEKDAY_NAMES[seminar.weekday - 1] ?? ""}
+						</CardTitle>
+						<CardDescription>
+							{seminar.room || "地点待定"}
+							{seminar.happened ? " · 已举行" : ""}
+						</CardDescription>
+					</div>
+					<div className="flex items-center gap-2">
+						{seminar.presentations.length === 0 ? (
+							<Badge variant="secondary" className="bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300">
+								待安排
+							</Badge>
+						) : null}
+						<Button variant="outline" size="sm" onClick={() => onEdit(seminar)}>
+							<Pencil className="mr-2 h-4 w-4" />
+							编辑
+						</Button>
+					</div>
+				</div>
+			</CardHeader>
+			<CardContent className="space-y-4">
+				{seminar.presentations.length > 0 ? (
+					<ul className="space-y-3">
+						{seminar.presentations.map((presentation) => (
+							<li key={presentation.track} className="space-y-1 border-l-2 pl-3">
+								<p className="text-xs text-muted-foreground">
+									Track {presentation.track} · {presentation.presenter_name}
+								</p>
+								<p className="text-sm font-medium">{presentation.title}</p>
+								{presentation.abstract ? (
+									<p className="text-xs text-muted-foreground">{presentation.abstract}</p>
+								) : null}
+							</li>
+						))}
+					</ul>
+				) : (
+					<p className="text-sm text-muted-foreground">还没有安排报告人。</p>
+				)}
+
+				{seminar.happened ? null : (
+					<div className="space-y-3 border-t pt-4">
+						<div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+							<div className="flex-1 space-y-2">
+								<Label htmlFor={`receive-${seminar.id}`}>接收者 ID</Label>
+								<Input
+									id={`receive-${seminar.id}`}
+									value={receiveId}
+									onChange={(event) => setReceiveId(event.target.value)}
+									placeholder="群 chat_id 或用户 open_id"
+								/>
+							</div>
+							<div className="flex gap-2">
+								<Button variant="outline" onClick={handlePreview} disabled={isPreviewing}>
+									{isPreviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+									预览
+								</Button>
+								<Button onClick={handlePush} disabled={isPushing}>
+									{isPushing ? (
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									) : (
+										<Send className="mr-2 h-4 w-4" />
+									)}
+									推送预告
+								</Button>
+							</div>
+						</div>
+						{preview ? <MessagePreview message={preview} /> : null}
+					</div>
+				)}
+			</CardContent>
+		</Card>
+	);
+}

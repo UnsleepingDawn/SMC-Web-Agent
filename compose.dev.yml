@@ -1,0 +1,53 @@
+# 开发模式覆盖文件：复用开发镜像、通过源码 bind mount 同步改动，重启对应进程即可生效。
+# 通过 ./dev.sh 的 dev-* 子命令启动；生产栈使用 ./dev.sh prod-*。
+# 本文件仅覆盖开发运行时的 build、挂载和命令，不改变生产镜像。
+services:
+  # ---- 前端：dev 镜像 + HMR（改文件自动刷新）----
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:7890}
+        HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:7890}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,host.docker.internal}
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+    volumes:
+      - ./client:/app
+      - client_dev_node_modules:/app/node_modules
+      - client_dev_next:/app/.next
+
+  # ---- 后端 server：依赖装在系统 site-packages（/app 之外），挂源码不会盖掉依赖 ----
+  server:
+    volumes:
+      - ./server/app:/app/app
+      - ./server/migrations:/app/migrations
+    command: ["python", "-m", "app.main"]   # 单进程 uvicorn，重启快（生产是 gunicorn 多 worker）
+
+  # ---- jobs：依赖装在系统 site-packages（/app 之外），挂 src/ 不会盖掉依赖 ----
+  jobs-api:
+    volumes:
+      - ./jobs/src:/app/src
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+  jobs-worker:
+    volumes:
+      - ./jobs/src:/app/src
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+  jobs-beat:
+    volumes:
+      - ./jobs/src:/app/src
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+
+  # ---- 迁移：挂 migrations，改迁移文件不用重建镜像 ----
+  migrate:
+    volumes:
+      - ./server/migrations:/app/migrations
+
+volumes:
+  client_dev_node_modules:
+  client_dev_next:

@@ -1,0 +1,22 @@
+{
+  auto_https off
+}
+
+:3000 {
+  encode gzip
+
+  handle /api/* {
+    reverse_proxy server:8000
+  }
+
+  handle /storage/* {
+    uri strip_prefix /storage
+    reverse_proxy minio:9000 {
+      header_up Host {http.request.host}
+    }
+  }
+
+  handle {
+    reverse_proxy client:3000
+  }
+}

@@ -1,0 +1,282 @@
+import logging
+from datetime import datetime, timezone
+from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
+
+from app.database.crud.sanitization import sanitize_for_postgres
+from app.database.models import Base
+from app.schemas.user import CurrentUser
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
+
+ModelType = TypeVar("ModelType", bound="Base")  # type: ignore
+CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
+UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
+
+logger = logging.getLogger(__name__)
+
+
+def _get_sanitized_field_names(data: Dict[str, Any]) -> List[str]:
+    sanitized_fields: List[str] = []
+    for field, value in data.items():
+        if sanitize_for_postgres(value) != value:
+            sanitized_fields.append(field)
+    return sanitized_fields
+
+
+class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
+    def __init__(self, model: Type[ModelType]):
+        """CRUD object with default methods to Create, Read, Update, Delete."""
+        self.model = model
+
+    def _filter_by_user(self, query, user: Optional[CurrentUser] = None):
+        """Add user filter to query if model has user_id and user is provided."""
+        if user and hasattr(self.model, "user_id"):
+            return query.filter(self.model.user_id == user.id)
+        return query
+
+    def get(
+        self,
+        db: Session,
+        id: Any,
+        *,
+        user: Optional[CurrentUser] = None,
+        update_last_accessed: bool = False,
+    ) -> Optional[ModelType]:
+        try:
+            query = db.query(self.model).filter(self.model.id == id)
+            query = self._filter_by_user(query, user)
+            if update_last_accessed and hasattr(self.model, "last_accessed_at"):
+                query.update(
+                    {self.model.last_accessed_at: datetime.now(timezone.utc)},
+                    synchronize_session=False,
+                )
+                db.commit()
+            return query.first()
+        except Exception as e:
+            # Roll back so a failed (often auto-)flush doesn't leave the session
+            # stuck in PendingRollbackError for every subsequent operation.
+            db.rollback()
+            logger.error(
+                f"Error retrieving {self.model.__name__} with ID {id}: {str(e)}",
+                exc_info=True,
+            )
+            return None
+
+    def get_multi(
+        self,
+        db: Session,
+        *,
+        skip: int = 0,
+        limit: int = 100,
+        user: Optional[CurrentUser] = None,
+    ) -> List[ModelType]:
+        try:
+            query = db.query(self.model)
+            query = self._filter_by_user(query, user)
+            return query.offset(skip).limit(limit).all()
+        except Exception as e:
+            db.rollback()
+            logger.error(
+                f"Error retrieving multiple {self.model.__name__} objects: {str(e)}",
+                exc_info=True,
+            )
+            return []
+
+    def get_by(
+        self, db: Session, *, user: Optional[CurrentUser] = None, **filters
+    ) -> Optional[ModelType]:
+        try:
+            query = db.query(self.model)
+            query = self._filter_by_user(query, user)
+
+            for field, value in filters.items():
+                if hasattr(self.model, field):
+                    query = query.filter(getattr(self.model, field) == value)
+
+            return query.first()
+        except Exception as e:
+            db.rollback()
+            logger.error(
+                f"Error retrieving {self.model.__name__} with filters {filters}: {str(e)}",
+                exc_info=True,
+            )
+            return None
+
+    def get_multi_by(
+        self,
+        db: Session,
+        *,
+        skip: int = 0,
+        limit: int = 100,
+        user: Optional[CurrentUser] = None,
+        **filters,
+    ) -> List[ModelType]:
+        try:
+            query = db.query(self.model)
+            query = self._filter_by_user(query, user)
+
+            for field, value in filters.items():
+                if hasattr(self.model, field):
+                    query = query.filter(getattr(self.model, field) == value)
+
+            return query.offset(skip).limit(limit).all()
+        except Exception as e:
+            db.rollback()
+            logger.error(
+                f"Error retrieving multiple {self.model.__name__} objects with filters {filters}: {str(e)}",
+                exc_info=True,
+            )
+            return []
+
+    def create(
+        self,
+        db: Session,
+        *,
+        obj_in: CreateSchemaType,
+        user: Optional[CurrentUser] = None,
+        auto_commit: bool = True,
+    ) -> Optional[ModelType]:
+        """Create a new record, optionally associating with a user.
+
+        Set auto_commit=False to flush without committing, allowing the caller to
+        batch multiple operations into a single transaction.
+        """
+        try:
+            obj_in_data = obj_in.model_dump()
+            if user and hasattr(self.model, "user_id"):
+                obj_in_data["user_id"] = user.id
+            sanitized_fields = _get_sanitized_field_names(obj_in_data)
+            obj_in_data = sanitize_for_postgres(obj_in_data)
+            if sanitized_fields:
+                logger.warning(
+                    "Sanitized null characters before creating %s in fields: %s",
+                    self.model.__name__,
+                    ", ".join(sanitized_fields),
+                )
+            db_obj = self.model(**obj_in_data)
+            db.add(db_obj)
+            if auto_commit:
+                db.commit()
+            else:
+                db.flush()
+            db.refresh(db_obj)
+            return db_obj
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error creating {self.model.__name__}: {str(e)}", exc_info=True)
+            return None
+
+    def update(
+        self,
+        db: Session,
+        *,
+        db_obj: ModelType,
+        obj_in: Union[UpdateSchemaType, Dict[str, Any]],
+        user: Optional[CurrentUser] = None,
+    ) -> Optional[ModelType]:
+        if user and hasattr(db_obj, "user_id") and db_obj.user_id != user.id:
+            logger.warning(
+                f"User {user.id} attempted to update {self.model.__name__} owned by another user"
+            )
+            return None
+
+        try:
+            if isinstance(obj_in, dict):
+                update_data = obj_in
+            else:
+                update_data = obj_in.model_dump(exclude_unset=True)
+
+            sanitized_fields = _get_sanitized_field_names(update_data)
+            update_data = sanitize_for_postgres(update_data)
+            if sanitized_fields:
+                logger.warning(
+                    "Sanitized null characters before updating %s %s in fields: %s",
+                    self.model.__name__,
+                    db_obj.id,
+                    ", ".join(sanitized_fields),
+                )
+
+            for field in update_data:
+                if hasattr(db_obj, field):
+                    setattr(db_obj, field, update_data[field])
+
+            db.add(db_obj)
+            db.commit()
+            db.refresh(db_obj)
+            return db_obj
+        except Exception as e:
+            db.rollback()
+            logger.error(
+                f"Error updating {self.model.__name__} with ID {db_obj.id}: {str(e)}",
+                exc_info=True,
+            )
+            return None
+
+    def remove(
+        self, db: Session, *, id: Any, user: Optional[CurrentUser] = None
+    ) -> Optional[ModelType]:
+        try:
+            query = db.query(self.model).filter(self.model.id == id)
+            query = self._filter_by_user(query, user)
+            obj = query.first()
+            if obj:
+                db.delete(obj)
+                db.commit()
+                return obj
+            return None
+        except StaleDataError:
+            # The flush expected to delete rows that were no longer there. A
+            # duplicate delete request is the benign cause, but the same error
+            # also comes from a session whose view has drifted from the database.
+            # Only the first leaves the record actually gone, so re-read before
+            # deciding which one this was rather than assuming the benign case.
+            db.rollback()
+            try:
+                gone = (
+                    self._filter_by_user(
+                        db.query(self.model).filter(self.model.id == id), user
+                    ).first()
+                    is None
+                )
+            except Exception:
+                gone = False
+            if gone:
+                logger.warning(
+                    "Concurrent delete of %s with ID %s; another transaction removed it first",
+                    self.model.__name__,
+                    id,
+                )
+            else:
+                logger.error(
+                    "Stale session deleting %s with ID %s: the flush found rows missing "
+                    "but the record is still present",
+                    self.model.__name__,
+                    id,
+                    exc_info=True,
+                )
+            return None
+        except Exception as e:
+            db.rollback()
+            logger.error(
+                f"Error removing {self.model.__name__} with ID {id}: {str(e)}",
+                exc_info=True,
+            )
+            return None
+
+    def has_any(
+        self,
+        db: Session,
+        *,
+        user: CurrentUser,
+    ) -> bool:
+        try:
+            query = db.query(self.model)
+            query = self._filter_by_user(query, user)
+            return query.count() > 0
+        except Exception as e:
+            logger.error(
+                f"Error checking if any {self.model.__name__} objects exist: {str(e)}",
+                exc_info=True,
+            )
+            return False

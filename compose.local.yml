@@ -1,0 +1,240 @@
+services:
+  gateway:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "${SMC_BIND_ADDRESS:-127.0.0.1}:${SMC_PORT:-3000}:3000"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      client:
+        condition: service_started
+      server:
+        condition: service_started
+      minio:
+        condition: service_healthy
+
+  client:
+    image: smc-client:${SMC_IMAGE_TAG:-prod}
+    build:
+      context: ./client
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:7890}
+        HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:7890}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,host.docker.internal}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+    expose:
+      - "3000"
+
+  server:
+    image: smc-server:${SMC_IMAGE_TAG:-prod}
+    build:
+      context: ./server
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:7890}
+        HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:7890}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,host.docker.internal}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:7890}
+      HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:7890}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,host.docker.internal,postgres,rabbitmq,redis,minio,server,jobs-api}
+      CLIENT_DOMAIN: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      WEBHOOK_BASE_URL: http://server:8000
+      CELERY_API_URL: http://jobs-api:8001
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-smc}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-http://localhost:3000/storage}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-http://localhost:3000/storage/smc}
+      S3_ADDRESSING_STYLE: ${S3_ADDRESSING_STYLE:-path}
+      FEISHU_APP_ID: ${FEISHU_APP_ID}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET}
+      FEISHU_ATTENDANCE_GROUP_NAME: ${FEISHU_ATTENDANCE_GROUP_NAME:-SMC考勤}
+      SEMINAR_START_TIME: ${SEMINAR_START_TIME:-1900}
+      SEMINAR_END_TIME: ${SEMINAR_END_TIME:-2030}
+      SEMINAR_PREVIEW_SCHEDULE: ${SEMINAR_PREVIEW_SCHEDULE:-mon 01:26}
+      WEEKLY_SUMMARY_SCHEDULE: ${WEEKLY_SUMMARY_SCHEDULE:-mon 01:40}
+      MONTHLY_TASK_SCHEDULE: ${MONTHLY_TASK_SCHEDULE:-day 12:00}
+      SMC_ENCRYPTION_KEY: ${SMC_ENCRYPTION_KEY}
+      LOCAL_AUTH_ENABLED: ${LOCAL_AUTH_ENABLED:-true}
+      LOCAL_AUTH_EMAIL: ${LOCAL_AUTH_EMAIL}
+      LOCAL_AUTH_NAME: ${LOCAL_AUTH_NAME:-Local User}
+      LOCAL_AUTH_PASSWORD: ${LOCAL_AUTH_PASSWORD}
+      SECURE_COOKIES: ${SECURE_COOKIES:-false}
+      SESSION_COOKIE_DOMAIN: ${SESSION_COOKIE_DOMAIN:-}
+      DEBUG: ${DEBUG:-false}
+    expose:
+      - "8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      jobs-api:
+        condition: service_started
+
+  migrate:
+    image: smc-server:${SMC_IMAGE_TAG:-prod}
+    restart: "no"
+    command: ["python", "app/scripts/run_migrations.py"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      SMC_ENCRYPTION_KEY: ${SMC_ENCRYPTION_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  jobs-api:
+    image: smc-jobs:${SMC_IMAGE_TAG:-prod}
+    build:
+      context: ./jobs
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:7890}
+        HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:7890}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,host.docker.internal}
+    restart: unless-stopped
+    command: ["python", "-m", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8001", "--log-level", "info"]
+    environment: &jobs-environment
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
+      DATABASE_URL: ${DATABASE_URL}
+      SMC_ENCRYPTION_KEY: ${SMC_ENCRYPTION_KEY}
+      HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:7890}
+      HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:7890}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,host.docker.internal,postgres,rabbitmq,redis,minio,server,jobs-api}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-smc}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+      S3_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_ENDPOINT_URL:-http://localhost:3000/storage}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-http://localhost:3000/storage/smc}
+      S3_ADDRESSING_STYLE: ${S3_ADDRESSING_STYLE:-path}
+      FEISHU_APP_ID: ${FEISHU_APP_ID}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET}
+      FEISHU_ATTENDANCE_GROUP_NAME: ${FEISHU_ATTENDANCE_GROUP_NAME:-SMC考勤}
+      SEMINAR_START_TIME: ${SEMINAR_START_TIME:-1900}
+      SEMINAR_END_TIME: ${SEMINAR_END_TIME:-2030}
+      SEMINAR_PREVIEW_SCHEDULE: ${SEMINAR_PREVIEW_SCHEDULE:-mon 01:26}
+      WEEKLY_SUMMARY_SCHEDULE: ${WEEKLY_SUMMARY_SCHEDULE:-mon 01:40}
+      MONTHLY_TASK_SCHEDULE: ${MONTHLY_TASK_SCHEDULE:-monthly 12:00}
+      WEBHOOK_BASE_URL: http://server:8000
+    expose:
+      - "8001"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  jobs-worker:
+    image: smc-jobs:${SMC_IMAGE_TAG:-prod}
+    restart: unless-stopped
+    command: ["python", "-m", "celery", "--app", "src.celery_app", "worker", "--loglevel=info", "--concurrency=2", "--queues=feishu_sync,message_send", "--max-tasks-per-child=1000", "--without-gossip", "--without-mingle", "--without-heartbeat", "--time-limit=300", "--soft-time-limit=240"]
+    healthcheck:
+      disable: true
+    environment: *jobs-environment
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  jobs-beat:
+    image: smc-jobs:${SMC_IMAGE_TAG:-prod}
+    restart: unless-stopped
+    command: ["python", "-m", "celery", "--app", "src.celery_app", "beat", "--loglevel=info"]
+    healthcheck:
+      disable: true
+    environment: *jobs-environment
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-smc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-smc}
+    volumes:
+      - ${SMC_WORKSPACE:-${HOME}/.smc}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-smc}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    volumes:
+      - ${SMC_WORKSPACE:-${HOME}/.smc}/rabbitmq:/var/lib/rabbitmq
+      - ./docker/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    volumes:
+      - ${SMC_WORKSPACE:-${HOME}/.smc}/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - ${SMC_WORKSPACE:-${HOME}/.smc}/minio:/data
+    expose:
+      - "9000"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command: >-
+      "until mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do sleep 1; done;
+      mc mb --ignore-existing local/$${S3_BUCKET_NAME};
+      mc anonymous set download local/$${S3_BUCKET_NAME}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-smc}
+    depends_on:
+      minio:
+        condition: service_healthy

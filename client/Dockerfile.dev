@@ -1,0 +1,15 @@
+FROM node:24-slim
+
+WORKDIR /app
+
+ARG HTTP_PROXY=http://host.docker.internal:7890
+ARG HTTPS_PROXY=http://host.docker.internal:7890
+ARG NO_PROXY=localhost,127.0.0.1,host.docker.internal
+
+COPY package.json yarn.lock ./
+RUN yarn config set proxy "${HTTP_PROXY}" \
+    && yarn config set https-proxy "${HTTPS_PROXY}" \
+    && yarn install --frozen-lockfile
+
+EXPOSE 3000
+CMD ["yarn", "dev", "--hostname", "0.0.0.0"]

@@ -1,0 +1,67 @@
+import os
+
+import psycopg2
+from dotenv import load_dotenv
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+from pydantic_settings import BaseSettings
+
+load_dotenv()
+
+
+class Settings(BaseSettings):
+    PROJECT_NAME: str = "SMC-Web-Agent"
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL", "postgresql://smc:smc@localhost:5432/smc"
+    )
+
+    class Config:
+        env_file = ".env"
+        extra = "ignore"  # Ignore extra fields in the .env file
+
+
+def run_migrations():
+    from alembic import command
+    from alembic.config import Config
+
+    command.upgrade(Config("alembic.ini"), "head")
+
+
+def create_database():
+    """Create the database if it doesn't exist."""
+    settings = Settings()
+
+    db_url = settings.DATABASE_URL
+    db_name = db_url.split("/")[-1]
+
+    parts = db_url.split("://")[1].split("/")[0].split("@")
+    user_pass = parts[0].split(":")
+    host_port = parts[1].split(":")
+
+    user = user_pass[0]
+    password = user_pass[1]
+    host = host_port[0]
+    port = host_port[1] if len(host_port) > 1 else "5432"
+
+    try:
+        conn = psycopg2.connect(
+            user=user,
+            password=password,
+            host=host,
+            port=port,
+            database="postgres",
+        )
+
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        cursor = conn.cursor()
+
+        cursor.execute(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{db_name}'")
+        exists = cursor.fetchone()
+
+        if not exists:
+            print(f"Creating database {db_name}")
+            cursor.execute(f'CREATE DATABASE "{db_name}"')
+
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error creating database: {e}")
