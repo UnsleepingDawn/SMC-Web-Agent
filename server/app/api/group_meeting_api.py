@@ -12,6 +12,7 @@ from app.database.crud.group_meeting_crud import (
     GroupMeetingPlanCreate,
     group_meeting_plan as group_meeting_plan_crud,
 )
+from app.database.crud.member_crud import member as member_crud
 from app.database.crud.semester_crud import semester as semester_crud
 from app.database.database import get_db
 from app.helpers.feishu_jobs import feishu_jobs
@@ -31,6 +32,9 @@ logger = logging.getLogger(__name__)
 group_meeting_router = APIRouter()
 
 DEFAULT_WEIGHTS = {"w2": 1, "w4": 5, "alpha": 2}
+
+# Mirrors ENROLLED_STATUS in the client; participants must be currently studying.
+ENROLLED_STATUS = "在读"
 
 
 class PlanRequest(BaseModel):
@@ -63,6 +67,19 @@ def _validate_names(name_list: List[str]) -> List[str]:
             status_code=status.HTTP_400_BAD_REQUEST, detail="参会名单中存在重复姓名"
         )
     return cleaned
+
+
+def _validate_enrolled(db: Session, name_list: List[str]) -> None:
+    enrolled = member_crud.list_filtered(
+        db, is_active=True, enrollment_status=ENROLLED_STATUS
+    )
+    known = {row.name for row in enrolled}
+    invalid = [name for name in name_list if name not in known]
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"以下成员不是在读状态：{'、'.join(invalid)}",
+        )
 
 
 def _validate_grouped(
@@ -129,6 +146,7 @@ def create_group_meeting_plan(
 ):
     semester = _resolve_semester(db, payload.semester_id)
     name_list = _validate_names(payload.name_list)
+    _validate_enrolled(db, name_list)
     already_grouped = _validate_grouped(payload.already_grouped, name_list)
 
     if not payload.meeting_periods:

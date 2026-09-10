@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
 import { GroupMeetingResult } from "@/components/group-meeting/GroupMeetingResult";
+import { MemberPicker } from "@/components/group-meeting/MemberPicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +17,7 @@ import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useGroupMeeting } from "@/hooks/useGroupMeeting";
 import { createGroupMeetingPlan, getMembers } from "@/lib/api";
 import type { Member } from "@/lib/schema";
-import { WEEKDAY_NAMES } from "@/lib/schema";
+import { ENROLLED_STATUS, WEEKDAY_NAMES } from "@/lib/schema";
 import { toast } from "sonner";
 const DAYS = WEEKDAY_NAMES.slice(0, 7);
 const PERIODS = ["上午", "下午"];
@@ -45,7 +46,7 @@ export default function GroupMeetingPage() {
 	const [activePlanId, setActivePlanId] = useState<string | null>(null);
 
 	useEffect(() => {
-		getMembers({ is_active: true })
+		getMembers({ is_active: true, enrollment_status: ENROLLED_STATUS })
 			.then((response) => setMembers(response.members))
 			.catch(() => setMembers([]));
 	}, []);
@@ -114,7 +115,7 @@ export default function GroupMeetingPage() {
 		<div className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
 			<PageHeader
 				title="小组会议排班"
-				description="手动选择参会名单与预设分组，按课表冲突求解分组与时段。"
+				description="参会名单仅含在读成员，可按导师全选；提交后按课表冲突求解分组与时段。"
 			/>
 
 			{error ? <p className="text-sm text-destructive">{error.message}</p> : null}
@@ -124,50 +125,14 @@ export default function GroupMeetingPage() {
 					<Card>
 						<CardHeader>
 							<CardTitle>参会名单</CardTitle>
-							<CardDescription>
-								已选 {selectedNames.size} 人 / 共 {members.length} 人
-							</CardDescription>
+							<CardDescription>仅列出在读成员，可按导师全选。</CardDescription>
 						</CardHeader>
-						<CardContent className="space-y-3">
-							<div className="flex gap-2">
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => setSelectedNames(new Set(members.map((m) => m.name)))}
-								>
-									全选
-								</Button>
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => setSelectedNames(new Set())}
-								>
-									清空
-								</Button>
-							</div>
-							<div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
-								{members.length === 0 ? (
-									<p className="text-sm text-muted-foreground">
-										还没有成员，请先同步人员主数据。
-									</p>
-								) : (
-									members.map((member) => (
-										<label
-											key={member.id}
-											className="flex items-center gap-2 text-sm"
-										>
-											<Checkbox
-												checked={selectedNames.has(member.name)}
-												onCheckedChange={() => toggle(setSelectedNames, member.name)}
-											/>
-											<span>{member.name}</span>
-											{member.grade ? (
-												<span className="text-xs text-muted-foreground">{member.grade}</span>
-											) : null}
-										</label>
-									))
-								)}
-							</div>
+						<CardContent>
+							<MemberPicker
+								members={members}
+								selectedNames={selectedNames}
+								onChange={setSelectedNames}
+							/>
 						</CardContent>
 					</Card>
 

@@ -27,6 +27,9 @@ export const WEEKDAY_NAMES = [
 	"周日",
 ] as const;
 
+/** 在读情况取此值时才算「在读」，小组会议参会名单只允许在读成员。 */
+export const ENROLLED_STATUS = "在读";
+
 export interface Semester {
 	id: string;
 	name: string;
