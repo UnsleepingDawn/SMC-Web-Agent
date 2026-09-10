@@ -5,7 +5,16 @@
 export const JOB_STATUSES = ["pending", "running", "completed", "failed"] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
-export const SYNC_TASKS = ["members", "seminars", "weekly_reports"] as const;
+export const SYNC_TASKS = [
+	"members",
+	"seminars",
+	"weekly_reports",
+	"attendance_group",
+	"daily_attendance",
+	"seminar_attendance",
+	"seminar_leaves",
+	"schedule",
+] as const;
 export type SyncTask = (typeof SYNC_TASKS)[number];
 
 export const WEEKDAY_NAMES = [
@@ -148,4 +157,114 @@ export interface PostMessage {
 		title: string;
 		content: Record<string, unknown>[][];
 	};
+}
+
+/* --------------------------------------------------------------- attendance */
+
+export interface AttendanceGroupMember {
+	id: string;
+	attendance_group_id: string;
+	member_id: string | null;
+	feishu_user_id: string;
+	name: string | null;
+}
+
+export interface AttendanceGroupInfo {
+	group_name: string;
+	feishu_group_id: string | null;
+	members: AttendanceGroupMember[];
+}
+
+export interface DailyAttendanceRow {
+	member_name: string;
+	days: Record<string, string>;
+	absent_count: number;
+	late_count: number;
+}
+
+export interface DailyAttendanceSummary {
+	week: number;
+	dates: string[];
+	rows: DailyAttendanceRow[];
+	chart: { name: string; absent: number; late: number }[];
+}
+
+export interface SeminarLeave {
+	id: string;
+	semester_id: string;
+	week: number;
+	member_name: string;
+	reason: string | null;
+}
+
+export interface SeminarAttendanceSummary {
+	week: number;
+	weekday: number;
+	seminar_date: string;
+	period: string;
+	expected: string[];
+	attended: string[];
+	absent: string[];
+	leave: { member_name: string; reason: string | null }[];
+	course_exempt: string[];
+	source: "flow" | "relay" | "manual";
+}
+
+export interface ScheduleEntry {
+	id: string;
+	semester_id: string;
+	weekday: number;
+	period: string;
+	section: string;
+	member_name: string;
+}
+
+/* ----------------------------------------------------------- group meeting */
+
+export const GROUP_MEETING_STATUSES = [
+	"pending",
+	"solving",
+	"completed",
+	"failed",
+] as const;
+export type GroupMeetingStatus = (typeof GROUP_MEETING_STATUSES)[number];
+
+export interface GroupMeetingSlot {
+	name: string;
+	day: string;
+	period: string;
+	start: string;
+	end: string;
+}
+
+export interface GroupMeetingPlan {
+	id: string;
+	status: GroupMeetingStatus;
+	job_id: string | null;
+	params: {
+		name_list: string[];
+		already_grouped: string[][];
+		meeting_periods: string[];
+		weights: Record<string, number>;
+		slots: GroupMeetingSlot[];
+		busy_count: number;
+	};
+	result: Record<string, string[][]>;
+	validation: {
+		missing: string[];
+		conflicts: { name: string; slot: string }[];
+		message?: string;
+	};
+	solver_status: string | null;
+	error: string | null;
+	created_at: string | null;
+	updated_at: string | null;
+}
+
+export interface GroupMeetingConfig {
+	periods: {
+		period: string;
+		slots: { label: string; start: string; end: string }[];
+	}[];
+	weights: Record<string, number>;
 }

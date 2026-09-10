@@ -1,10 +1,17 @@
 import type {
+	AttendanceGroupInfo,
+	DailyAttendanceSummary,
 	FeishuConfig,
+	GroupMeetingConfig,
+	GroupMeetingPlan,
 	Member,
 	MemberFilters,
 	Notification,
 	PostMessage,
+	ScheduleEntry,
 	Seminar,
+	SeminarAttendanceSummary,
+	SeminarLeave,
 	Semester,
 	SyncRun,
 	SyncTask,
@@ -263,4 +270,94 @@ export function saveFeishuConfig(payload: {
         method: 'PUT',
         body: JSON.stringify(payload),
     });
+}
+
+/* -------------------------------------------------------------- attendance */
+
+export function getAttendanceGroup(): Promise<AttendanceGroupInfo> {
+    return fetchFromApi('/api/attendance/group');
+}
+
+export function getDailyAttendance(
+    semesterId: string,
+    week: number,
+): Promise<DailyAttendanceSummary> {
+    return fetchFromApi(`/api/attendance/daily?semester_id=${semesterId}&week=${week}`);
+}
+
+export function exportDailyAttendance(
+    semesterId: string,
+    week: number,
+): Promise<{ file_url: string; week: number }> {
+    return fetchFromApi(
+        `/api/attendance/daily/export?semester_id=${semesterId}&week=${week}`,
+        { method: 'POST' },
+    );
+}
+
+export function getSeminarAttendance(
+    semesterId: string,
+    week: number,
+): Promise<SeminarAttendanceSummary> {
+    return fetchFromApi(`/api/attendance/seminar?semester_id=${semesterId}&week=${week}`);
+}
+
+export function submitSeminarRelay(payload: {
+    semester_id: string;
+    week: number;
+    text: string;
+}): Promise<{ count: number; names: string[] }> {
+    return fetchFromApi('/api/attendance/seminar/relay', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+
+export function setSeminarManual(payload: {
+    semester_id: string;
+    week: number;
+    observed_names: string[];
+}): Promise<{ count: number; names: string[] }> {
+    return fetchFromApi('/api/attendance/seminar/manual', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+    });
+}
+
+export function getSeminarLeaves(
+    semesterId: string,
+    week: number,
+): Promise<{ leaves: SeminarLeave[] }> {
+    return fetchFromApi(`/api/attendance/leaves?semester_id=${semesterId}&week=${week}`);
+}
+
+export function getSchedule(semesterId: string): Promise<{ entries: ScheduleEntry[] }> {
+    return fetchFromApi(`/api/attendance/schedule?semester_id=${semesterId}`);
+}
+
+/* ------------------------------------------------------------ group meeting */
+
+export function getGroupMeetingConfig(): Promise<GroupMeetingConfig> {
+    return fetchFromApi('/api/group-meeting/config');
+}
+
+export function createGroupMeetingPlan(payload: {
+    semester_id: string;
+    name_list: string[];
+    already_grouped: string[][];
+    meeting_periods: string[];
+    weights?: Record<string, number>;
+}): Promise<{ plan_id: string; job_id: string; status: string }> {
+    return fetchFromApi('/api/group-meeting/plans', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+
+export function getGroupMeetingPlans(limit = 20): Promise<{ plans: GroupMeetingPlan[] }> {
+    return fetchFromApi(`/api/group-meeting/plans?limit=${limit}`);
+}
+
+export function getGroupMeetingPlan(planId: string): Promise<{ plan: GroupMeetingPlan }> {
+    return fetchFromApi(`/api/group-meeting/plans/${planId}`);
 }

@@ -32,3 +32,18 @@ def format_hhmm(value: str | int) -> str:
         raise ValueError(f"Time must be four digits, got {value!r}")
     hhmm = int(text)
     return f"{hhmm // 100:02d}:{hhmm % 100:02d}"
+
+
+def shift_hhmm(value: str | int, minutes: int) -> str:
+    """Shift an HHMM value by a number of minutes, wrapping at midnight."""
+    text = str(value).strip()
+    if len(text) != 4 or not text.isdigit():
+        raise ValueError(f"Time must be four digits, got {value!r}")
+    total = (int(text[:2]) * 60 + int(text[2:]) + minutes) % (24 * 60)
+    return f"{total // 60:02d}{total % 60:02d}"
+
+
+def week_date(start_date: date, week: int, weekday: int) -> date:
+    """The date of an ISO weekday (1=Monday) inside the given week."""
+    monday = start_date + timedelta(days=(week - 1) * 7)
+    return monday + timedelta(days=weekday - 1)

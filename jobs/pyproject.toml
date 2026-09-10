@@ -26,6 +26,7 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "cryptography>=44.0.0",
     "types-psutil>=7.0.0.20250601",
+    "pulp>=2.9.0",
 ]
 
 [tool.uv]

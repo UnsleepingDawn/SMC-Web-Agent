@@ -22,7 +22,20 @@ const TASK_LABELS: Record<SyncTask, string> = {
 	members: "人员主数据（通讯录 + 组会表）",
 	seminars: "组会安排",
 	weekly_reports: "周报记录",
+	attendance_group: "考勤组名单",
+	daily_attendance: "日常考勤（本周打卡）",
+	seminar_attendance: "组会考勤（打卡流水）",
+	seminar_leaves: "组会请假",
+	schedule: "课表",
 };
+
+// Tasks that operate on a single week and therefore show the week input.
+const WEEK_TASKS: SyncTask[] = [
+	"weekly_reports",
+	"daily_attendance",
+	"seminar_attendance",
+	"seminar_leaves",
+];
 
 interface SyncPanelProps {
 	semesters: Semester[];
@@ -77,14 +90,14 @@ export function SyncPanel({ semesters, defaultSemesterId, defaultWeek, onComplet
 			const response = await startSync({
 				task,
 				semester_id: semesterId,
-				week: task === "weekly_reports" ? Number(week) : undefined,
+				week: WEEK_TASKS.includes(task) ? Number(week) : undefined,
 			});
 			setRun({
 				id: response.run_id,
 				job_id: response.job_id,
 				task_name: task,
 				semester_id: semesterId,
-				week: task === "weekly_reports" ? Number(week) : null,
+				week: WEEK_TASKS.includes(task) ? Number(week) : null,
 				status: "running",
 				error: null,
 				payload: {},
@@ -138,7 +151,7 @@ export function SyncPanel({ semesters, defaultSemesterId, defaultWeek, onComplet
 							</SelectContent>
 						</Select>
 					</div>
-					{task === "weekly_reports" ? (
+					{WEEK_TASKS.includes(task) ? (
 						<div className="space-y-2">
 							<Label>周次</Label>
 							<Input

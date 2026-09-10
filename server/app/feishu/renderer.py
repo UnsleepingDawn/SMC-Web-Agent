@@ -87,27 +87,62 @@ def render_seminar_preview(
     )
 
 
+def _name_list(names: Optional[List[str]], *, missing_marker: str = "无记录") -> str:
+    if names is None:
+        return missing_marker
+    return "、".join(names) or "无"
+
+
 def render_weekly_summary(
     *,
     semester: Semester,
     week: int,
     submitted_names: List[str],
     missing_names: List[str],
+    absent_names: Optional[List[str]] = None,
+    late_names: Optional[List[str]] = None,
+    attended_names: Optional[List[str]] = None,
+    not_attended_names: Optional[List[str]] = None,
+    leave_names: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Build the weekly summary post; attendance sections are omitted."""
+    """Build the weekly summary post, including the attendance sections."""
     template = load_template("weekly_summary")
 
-    content = template.paragraph(0)  # heading
-    link_paragraph = template.paragraph(1)
+    content: List[List[Dict[str, Any]]] = []
+
+    content.append(template.paragraph(0))  # 日常考勤 heading
+    absent_paragraph = template.paragraph(1)
+    absent_paragraph[1]["text"] = _name_list(absent_names)
+    content.append(absent_paragraph)
+    late_paragraph = template.paragraph(2)
+    late_paragraph[1]["text"] = _name_list(late_names)
+    content.append(late_paragraph)
+
+    content.append(template.paragraph(3))  # 周报 heading
+    link_paragraph = template.paragraph(4)
     link_paragraph[0]["href"] = semester.weekly_report_url or "http://www.feishu.cn"
-    submitted_paragraph = template.paragraph(2)
+    content.append(link_paragraph)
+    submitted_paragraph = template.paragraph(5)
     submitted_paragraph[1]["text"] = "、".join(submitted_names) or "无"
-    missing_paragraph = template.paragraph(3)
+    content.append(submitted_paragraph)
+    missing_paragraph = template.paragraph(6)
     missing_paragraph[1]["text"] = "、".join(missing_names) or "无"
+    content.append(missing_paragraph)
+
+    content.append(template.paragraph(7))  # 组会出勤 heading
+    attended_paragraph = template.paragraph(8)
+    attended_paragraph[1]["text"] = _name_list(attended_names)
+    content.append(attended_paragraph)
+    not_attended_paragraph = template.paragraph(9)
+    not_attended_paragraph[1]["text"] = _name_list(not_attended_names)
+    content.append(not_attended_paragraph)
+    leave_paragraph = template.paragraph(10)
+    leave_paragraph[1]["text"] = _name_list(leave_names)
+    content.append(leave_paragraph)
 
     return template.to_payload(
         f"{semester.name}-第{week}周总结",
-        [content, link_paragraph, submitted_paragraph, missing_paragraph],
+        content,
     )
 
 

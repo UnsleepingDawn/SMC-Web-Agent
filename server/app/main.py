@@ -12,8 +12,9 @@ from app.logging_config import configure_logging
 configure_logging()
 
 from app.api.api import router
-from app.api.attendance_api import attendance_router, group_meeting_router
+from app.api.attendance_api import attendance_router
 from app.api.auth_api import auth_router
+from app.api.group_meeting_api import group_meeting_router
 from app.api.member_api import member_router
 from app.api.notification_api import notification_router, settings_router
 from app.api.semester_api import semester_router

@@ -14,16 +14,30 @@ from typing import Any, Dict, Optional
 
 import requests
 from celery import shared_task  # type: ignore
-from src.feishu.attendance import group_user_ids
+from src.feishu.attendance import (
+    find_group,
+    group_user_ids,
+    list_group_users,
+    query_daily_stats,
+    query_user_flows,
+    stats_field_codes,
+)
 from src.feishu.bitable import search_records
 from src.feishu.client import FeishuClient
 from src.feishu.contact import collect_primary_members
 from src.feishu.message import send_post, send_text
+from src.parsers.attendance_parser import (
+    daily_attendance_rows,
+    observed_seminar_names,
+)
+from src.parsers.leave_parser import leave_rows
 from src.parsers.member_parser import merge_members, seminar_member_rows
+from src.parsers.schedule_parser import schedule_rows
 from src.parsers.seminar_parser import build_seminars
 from src.parsers.weekly_report_parser import weekly_report_rows
 from src.runtime_config import get_feishu_credentials
 from src.seminar_calendar import date_from_iso
+from src.solvers.group_meeting_solver import solve_group_meeting
 from src.webhook import report_notification_result, report_sync_result
 
 logger = logging.getLogger(__name__)
@@ -133,6 +147,224 @@ def sync_weekly_reports(
         logger.error("sync_weekly_reports failed: %s", exc, exc_info=True)
         report_sync_result(
             webhook_url, status="failed", kind="weekly_reports", error=str(exc)
+        )
+        return {"error": str(exc)}
+
+
+@shared_task(name="sync_attendance_group", bind=True)
+def sync_attendance_group(self, *, webhook_url: str) -> Dict[str, Any]:
+    """Attendance group definition -> the set of members who must report."""
+    try:
+        client = _client()
+        group_name = _attendance_group_name()
+        group = find_group(client, group_name)
+        group_id = str(group.get("group_id") or "")
+        users = list_group_users(client, group_id)
+        members = [
+            {
+                "feishu_user_id": str(user.get("user_id") or ""),
+                "name": str(user.get("name") or ""),
+            }
+            for user in users
+            if user.get("user_id")
+        ]
+        report_sync_result(
+            webhook_url,
+            status="completed",
+            kind="attendance_group",
+            data={
+                "group_name": group_name,
+                "feishu_group_id": group_id,
+                "members": members,
+            },
+        )
+        return {"count": len(members)}
+    except Exception as exc:  # noqa: BLE001 - must report, not crash the worker
+        logger.error("sync_attendance_group failed: %s", exc, exc_info=True)
+        report_sync_result(
+            webhook_url, status="failed", kind="attendance_group", error=str(exc)
+        )
+        return {"error": str(exc)}
+
+
+@shared_task(name="sync_daily_attendance", bind=True)
+def sync_daily_attendance(
+    self,
+    *,
+    webhook_url: str,
+    week: int,
+    week_monday: str,
+    week_friday: str,
+    user_ids: list[str],
+    operator_user_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Daily clock-in statistics for one week -> one row per member per day."""
+    try:
+        client = _client()
+        start_date = date_from_iso(week_monday)
+        end_date = date_from_iso(week_friday)
+        field_codes = stats_field_codes(client, start_date=start_date, end_date=end_date)
+        user_datas = query_daily_stats(
+            client,
+            start_date=start_date,
+            end_date=end_date,
+            user_ids=user_ids,
+            operator_user_id=operator_user_id,
+        )
+        rows = daily_attendance_rows(user_datas, field_codes=field_codes)
+        report_sync_result(
+            webhook_url,
+            status="completed",
+            kind="daily_attendance",
+            data={"week": week, "rows": rows},
+        )
+        return {"count": len(rows)}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("sync_daily_attendance failed: %s", exc, exc_info=True)
+        report_sync_result(
+            webhook_url, status="failed", kind="daily_attendance", error=str(exc)
+        )
+        return {"error": str(exc)}
+
+
+@shared_task(name="sync_seminar_attendance", bind=True)
+def sync_seminar_attendance(
+    self,
+    *,
+    webhook_url: str,
+    week: int,
+    seminar_date: str,
+    check_time_from: int,
+    check_time_to: int,
+    user_ids: list[str],
+    user_id_to_name: Dict[str, str],
+) -> Dict[str, Any]:
+    """Clock-in flows around one seminar -> the names that showed up."""
+    try:
+        client = _client()
+        flows = query_user_flows(
+            client,
+            user_ids=user_ids,
+            check_time_from=check_time_from,
+            check_time_to=check_time_to,
+        )
+        observed = observed_seminar_names(flows, id_to_name=user_id_to_name)
+        report_sync_result(
+            webhook_url,
+            status="completed",
+            kind="seminar_attendance",
+            data={
+                "week": week,
+                "seminar_date": seminar_date,
+                "observed_names": observed,
+            },
+        )
+        return {"count": len(observed)}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("sync_seminar_attendance failed: %s", exc, exc_info=True)
+        report_sync_result(
+            webhook_url, status="failed", kind="seminar_attendance", error=str(exc)
+        )
+        return {"error": str(exc)}
+
+
+@shared_task(name="sync_seminar_leaves", bind=True)
+def sync_seminar_leaves(
+    self,
+    *,
+    webhook_url: str,
+    app_token: str,
+    table_id: str,
+    week: int,
+) -> Dict[str, Any]:
+    """Seminar leave requests for one week."""
+    try:
+        client = _client()
+        records = search_records(
+            client,
+            app_token=app_token,
+            table_id=table_id,
+            field_names=["请假人", "请假原因"],
+            filter_conditions=[
+                {"field_name": "_Week", "operator": "is", "value": [str(week)]},
+            ],
+        )
+        rows = leave_rows(records, week=week)
+        report_sync_result(
+            webhook_url,
+            status="completed",
+            kind="seminar_leaves",
+            data={"week": week, "leaves": rows},
+        )
+        return {"count": len(rows)}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("sync_seminar_leaves failed: %s", exc, exc_info=True)
+        report_sync_result(
+            webhook_url, status="failed", kind="seminar_leaves", error=str(exc)
+        )
+        return {"error": str(exc)}
+
+
+@shared_task(name="sync_schedule", bind=True)
+def sync_schedule(
+    self,
+    *,
+    webhook_url: str,
+    app_token: str,
+    table_id: str,
+) -> Dict[str, Any]:
+    """The course-schedule table -> one row per member per course slot."""
+    try:
+        client = _client()
+        records = search_records(client, app_token=app_token, table_id=table_id)
+        rows = schedule_rows(records)
+        report_sync_result(
+            webhook_url,
+            status="completed",
+            kind="schedule",
+            data={"entries": rows},
+        )
+        return {"count": len(rows)}
+    except Exception as exc:  # noqa: BLE001
+        logger.error("sync_schedule failed: %s", exc, exc_info=True)
+        report_sync_result(webhook_url, status="failed", kind="schedule", error=str(exc))
+        return {"error": str(exc)}
+
+
+@shared_task(name="solve_group_meeting", bind=True)
+def solve_group_meeting_task(
+    self,
+    *,
+    webhook_url: str,
+    name_list: list[str],
+    slots: list[Dict[str, Any]],
+    busy_pairs: list[list[int]],
+    already_grouped: list[list[str]],
+    weights: Optional[Dict[str, int]] = None,
+) -> Dict[str, Any]:
+    """Run the BILP solver and report the plan back to the server."""
+    try:
+        solution = solve_group_meeting(
+            name_list=name_list,
+            slots=slots,
+            busy_pairs=busy_pairs,
+            already_grouped=already_grouped,
+            weights=weights,
+        )
+        report_sync_result(
+            webhook_url,
+            status="completed",
+            kind="group_meeting_plan",
+            data=solution,
+        )
+        return {
+            "solver_status": solution["solver_status"],
+            "groups": sum(len(groups) for groups in solution["result"].values()),
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.error("solve_group_meeting failed: %s", exc, exc_info=True)
+        report_sync_result(
+            webhook_url, status="failed", kind="group_meeting_plan", error=str(exc)
         )
         return {"error": str(exc)}
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
+from app.api.attendance_api import build_daily_summary, build_seminar_summary
 from app.database.crud.member_crud import member as member_crud
 from app.database.crud.notification_crud import (
     NotificationCreate,
@@ -100,11 +101,28 @@ def _weekly_summary() -> Dict[str, Any]:
         submitted, missing = weekly_report_crud.submitted_and_missing(
             db, semester_id=semester.id, week=week
         )
+
+        # Attendance is best-effort: a semester that has never synced simply
+        # reports "no records" in the summary rather than blocking the message.
+        daily = build_daily_summary(db, semester, week)
+        seminar = build_seminar_summary(db, semester, week)
+        has_daily = bool(daily["dates"])
+        has_seminar = bool(seminar["expected"])
+
         message = render_weekly_summary(
             semester=semester,
             week=week,
             submitted_names=[row.member_name for row in submitted],
             missing_names=[row.name for row in missing],
+            absent_names=daily["absent_names"] if has_daily else None,
+            late_names=daily["late_names"] if has_daily else None,
+            attended_names=seminar["attended"] if has_seminar else None,
+            not_attended_names=seminar["absent"] if has_seminar else None,
+            leave_names=(
+                [row["member_name"] for row in seminar["leave"]]
+                if has_seminar
+                else None
+            ),
         )
         recipients = _default_recipients(db, semester)
         sent = _dispatch_post(

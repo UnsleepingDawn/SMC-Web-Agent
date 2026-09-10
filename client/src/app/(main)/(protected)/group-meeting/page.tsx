@@ -1,0 +1,271 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import { Loader2 } from "lucide-react";
+import { EmptyState } from "@/components/common/EmptyState";
+import { PageHeader } from "@/components/common/PageHeader";
+import { GroupMeetingResult } from "@/components/group-meeting/GroupMeetingResult";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useCurrentSemester } from "@/hooks/useCurrentSemester";
+import { useGroupMeeting } from "@/hooks/useGroupMeeting";
+import { createGroupMeetingPlan, getMembers } from "@/lib/api";
+import type { Member } from "@/lib/schema";
+import { WEEKDAY_NAMES } from "@/lib/schema";
+import { toast } from "sonner";
+const DAYS = WEEKDAY_NAMES.slice(0, 7);
+const PERIODS = ["上午", "下午"];
+
+function parseGroups(text: string): string[][] {
+	return text
+		.split("\n")
+		.map((line) =>
+			line
+				.split(/[、,，\s]+/)
+				.map((name) => name.trim())
+				.filter(Boolean),
+		)
+		.filter((group) => group.length > 0);
+}
+
+export default function GroupMeetingPage() {
+	const { semester } = useCurrentSemester();
+	const { config, plans, isLoading, error, refetch } = useGroupMeeting();
+	const [members, setMembers] = useState<Member[]>([]);
+	const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
+	const [groupText, setGroupText] = useState("");
+	const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set(["周三"]));
+	const [selectedPeriods, setSelectedPeriods] = useState<Set<string>>(new Set(["下午"]));
+	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [activePlanId, setActivePlanId] = useState<string | null>(null);
+
+	useEffect(() => {
+		getMembers({ is_active: true })
+			.then((response) => setMembers(response.members))
+			.catch(() => setMembers([]));
+	}, []);
+
+	const toggle = (
+		setter: Dispatch<SetStateAction<Set<string>>>,
+		value: string,
+	) => {
+		setter((previous) => {
+			const next = new Set(previous);
+			if (next.has(value)) next.delete(value);
+			else next.add(value);
+			return next;
+		});
+	};
+
+	const activePlan = plans.find((plan) => plan.id === activePlanId) ?? plans[0] ?? null;
+
+	const handleSubmit = async () => {
+		if (!semester) {
+			toast.error("请先选择学期。");
+			return;
+		}
+		if (selectedNames.size === 0) {
+			toast.error("请至少选择一位参会成员。");
+			return;
+		}
+		if (selectedDays.size === 0 || selectedPeriods.size === 0) {
+			toast.error("请至少选择一个星期与时段。");
+			return;
+		}
+		const meetingPeriods: string[] = [];
+		selectedDays.forEach((day) =>
+			selectedPeriods.forEach((period) => meetingPeriods.push(`${day}${period}`)),
+		);
+
+		setIsSubmitting(true);
+		try {
+			const response = await createGroupMeetingPlan({
+				semester_id: semester.id,
+				name_list: Array.from(selectedNames),
+				already_grouped: parseGroups(groupText),
+				meeting_periods: meetingPeriods,
+				weights: config?.weights,
+			});
+			setActivePlanId(response.plan_id);
+			toast.success("已提交排班任务，正在求解。");
+			await refetch();
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "提交排班失败。");
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
+
+	if (!semester) {
+		return (
+			<div className="mx-auto w-full max-w-5xl space-y-6 px-6 py-8">
+				<PageHeader title="小组会议排班" />
+				<EmptyState title="还没有配置学期" description="请先在设置页创建学期。" />
+			</div>
+		);
+	}
+
+	return (
+		<div className="mx-auto w-full max-w-6xl space-y-6 px-6 py-8">
+			<PageHeader
+				title="小组会议排班"
+				description="手动选择参会名单与预设分组，按课表冲突求解分组与时段。"
+			/>
+
+			{error ? <p className="text-sm text-destructive">{error.message}</p> : null}
+
+			<div className="grid gap-6 lg:grid-cols-2">
+				<div className="space-y-4">
+					<Card>
+						<CardHeader>
+							<CardTitle>参会名单</CardTitle>
+							<CardDescription>
+								已选 {selectedNames.size} 人 / 共 {members.length} 人
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-3">
+							<div className="flex gap-2">
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => setSelectedNames(new Set(members.map((m) => m.name)))}
+								>
+									全选
+								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => setSelectedNames(new Set())}
+								>
+									清空
+								</Button>
+							</div>
+							<div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
+								{members.length === 0 ? (
+									<p className="text-sm text-muted-foreground">
+										还没有成员，请先同步人员主数据。
+									</p>
+								) : (
+									members.map((member) => (
+										<label
+											key={member.id}
+											className="flex items-center gap-2 text-sm"
+										>
+											<Checkbox
+												checked={selectedNames.has(member.name)}
+												onCheckedChange={() => toggle(setSelectedNames, member.name)}
+											/>
+											<span>{member.name}</span>
+											{member.grade ? (
+												<span className="text-xs text-muted-foreground">{member.grade}</span>
+											) : null}
+										</label>
+									))
+								)}
+							</div>
+						</CardContent>
+					</Card>
+
+					<Card>
+						<CardHeader>
+							<CardTitle>预设分组与时段</CardTitle>
+							<CardDescription>每行一组，组内姓名用顿号或逗号分隔；留空则由求解器分组。</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<Textarea
+								rows={4}
+								placeholder={"张三、李四\n王五、赵六"}
+								value={groupText}
+								onChange={(event) => setGroupText(event.target.value)}
+							/>
+							<div className="space-y-2">
+								<Label>星期</Label>
+								<div className="flex flex-wrap gap-3">
+									{DAYS.map((day) => (
+										<label key={day} className="flex items-center gap-1 text-sm">
+											<Checkbox
+												checked={selectedDays.has(day)}
+												onCheckedChange={() => toggle(setSelectedDays, day)}
+											/>
+											{day}
+										</label>
+									))}
+								</div>
+							</div>
+							<div className="space-y-2">
+								<Label>时段</Label>
+								<div className="flex flex-wrap gap-3">
+									{PERIODS.map((period) => (
+										<label key={period} className="flex items-center gap-1 text-sm">
+											<Checkbox
+												checked={selectedPeriods.has(period)}
+												onCheckedChange={() => toggle(setSelectedPeriods, period)}
+											/>
+											{period}
+										</label>
+									))}
+								</div>
+							</div>
+							<Button onClick={handleSubmit} disabled={isSubmitting}>
+								{isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+								提交排班
+							</Button>
+						</CardContent>
+					</Card>
+				</div>
+
+				<div className="space-y-4">
+					<Card>
+						<CardHeader>
+							<CardTitle>排班结果</CardTitle>
+							<CardDescription>每 30 分钟最多安排一个小组。</CardDescription>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							{isLoading ? (
+								<div className="flex items-center gap-2 text-sm text-muted-foreground">
+									<Loader2 className="h-4 w-4 animate-spin" />
+									正在加载...
+								</div>
+							) : activePlan ? (
+								<GroupMeetingResult plan={activePlan} />
+							) : (
+								<EmptyState title="暂无排班记录" description="提交一次排班后即可在此查看结果。" />
+							)}
+						</CardContent>
+					</Card>
+
+					{plans.length > 1 ? (
+						<Card>
+							<CardHeader>
+								<CardTitle>历史排班</CardTitle>
+							</CardHeader>
+							<CardContent className="space-y-2">
+								{plans.map((plan) => (
+									<button
+										key={plan.id}
+										type="button"
+										onClick={() => setActivePlanId(plan.id)}
+										className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted"
+									>
+										<span className="font-mono text-xs">{plan.id.slice(0, 8)}</span>
+										<span className="flex items-center gap-2">
+											<span className="text-xs text-muted-foreground">
+												{plan.params.name_list?.length ?? 0} 人
+											</span>
+											<Badge variant="secondary">{plan.status}</Badge>
+										</span>
+									</button>
+								))}
+							</CardContent>
+						</Card>
+					) : null}
+				</div>
+			</div>
+		</div>
+	);
+}

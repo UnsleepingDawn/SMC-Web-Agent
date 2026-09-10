@@ -6,6 +6,7 @@ import logging
 from typing import Optional
 from uuid import UUID
 
+from app.api.attendance_api import build_daily_summary, build_seminar_summary
 from app.auth.dependencies import get_required_user
 from app.database.crud.notification_crud import (
     NotificationCreate,
@@ -26,6 +27,23 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 weekly_report_router = APIRouter()
+
+
+def _attendance_kwargs(db: Session, semester, week: int) -> dict:
+    """Attendance sections for the summary, or None when nothing was synced."""
+    daily = build_daily_summary(db, semester, week)
+    seminar = build_seminar_summary(db, semester, week)
+    has_daily = bool(daily["dates"])
+    has_seminar = bool(seminar["expected"])
+    return {
+        "absent_names": daily["absent_names"] if has_daily else None,
+        "late_names": daily["late_names"] if has_daily else None,
+        "attended_names": seminar["attended"] if has_seminar else None,
+        "not_attended_names": seminar["absent"] if has_seminar else None,
+        "leave_names": (
+            [row["member_name"] for row in seminar["leave"]] if has_seminar else None
+        ),
+    }
 
 
 class PushRequest(BaseModel):
@@ -86,6 +104,7 @@ def weekly_summary_preview(
         week=week,
         submitted_names=[row.member_name for row in submitted],
         missing_names=[row.name for row in missing],
+        **_attendance_kwargs(db, db_semester, week),
     )
     return {"payload": payload}
 
@@ -154,6 +173,7 @@ def push_weekly_summary(
         week=week,
         submitted_names=[row.member_name for row in submitted],
         missing_names=[row.name for row in missing],
+        **_attendance_kwargs(db, db_semester, week),
     )
 
     record = notification_crud.create(

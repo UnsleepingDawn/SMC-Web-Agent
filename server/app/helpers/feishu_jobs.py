@@ -103,6 +103,124 @@ class FeishuJobsClient:
             queue="feishu_sync",
         )
 
+    def sync_attendance_group(self, *, run_id: UUID) -> str:
+        return self._submit(
+            "sync_attendance_group",
+            {
+                "webhook_url": f"{self.webhook_base_url}/api/webhooks/jobs/{run_id}",
+            },
+            queue="feishu_sync",
+        )
+
+    def sync_daily_attendance(
+        self,
+        *,
+        run_id: UUID,
+        week: int,
+        week_monday: str,
+        week_friday: str,
+        user_ids: list[str],
+        operator_user_id: Optional[str] = None,
+    ) -> str:
+        return self._submit(
+            "sync_daily_attendance",
+            {
+                "webhook_url": f"{self.webhook_base_url}/api/webhooks/jobs/{run_id}",
+                "week": week,
+                "week_monday": week_monday,
+                "week_friday": week_friday,
+                "user_ids": user_ids,
+                "operator_user_id": operator_user_id,
+            },
+            queue="feishu_sync",
+        )
+
+    def sync_seminar_attendance(
+        self,
+        *,
+        run_id: UUID,
+        week: int,
+        seminar_date: str,
+        check_time_from: int,
+        check_time_to: int,
+        user_ids: list[str],
+        user_id_to_name: Dict[str, str],
+    ) -> str:
+        return self._submit(
+            "sync_seminar_attendance",
+            {
+                "webhook_url": f"{self.webhook_base_url}/api/webhooks/jobs/{run_id}",
+                "week": week,
+                "seminar_date": seminar_date,
+                "check_time_from": check_time_from,
+                "check_time_to": check_time_to,
+                "user_ids": user_ids,
+                "user_id_to_name": user_id_to_name,
+            },
+            queue="feishu_sync",
+        )
+
+    def sync_seminar_leaves(
+        self,
+        *,
+        run_id: UUID,
+        app_token: str,
+        table_id: str,
+        week: int,
+    ) -> str:
+        return self._submit(
+            "sync_seminar_leaves",
+            {
+                "webhook_url": f"{self.webhook_base_url}/api/webhooks/jobs/{run_id}",
+                "app_token": app_token,
+                "table_id": table_id,
+                "week": week,
+            },
+            queue="feishu_sync",
+        )
+
+    def sync_schedule(
+        self,
+        *,
+        run_id: UUID,
+        app_token: str,
+        table_id: str,
+    ) -> str:
+        return self._submit(
+            "sync_schedule",
+            {
+                "webhook_url": f"{self.webhook_base_url}/api/webhooks/jobs/{run_id}",
+                "app_token": app_token,
+                "table_id": table_id,
+            },
+            queue="feishu_sync",
+        )
+
+    def solve_group_meeting(
+        self,
+        *,
+        plan_id: UUID,
+        name_list: list[str],
+        slots: list[Dict[str, Any]],
+        busy_pairs: list[list[int]],
+        already_grouped: list[list[str]],
+        weights: Optional[Dict[str, int]] = None,
+    ) -> str:
+        return self._submit(
+            "solve_group_meeting",
+            {
+                "webhook_url": (
+                    f"{self.webhook_base_url}/api/webhooks/group-meeting/{plan_id}"
+                ),
+                "name_list": name_list,
+                "slots": slots,
+                "busy_pairs": busy_pairs,
+                "already_grouped": already_grouped,
+                "weights": weights,
+            },
+            queue="feishu_sync",
+        )
+
     def send_message(
         self,
         *,

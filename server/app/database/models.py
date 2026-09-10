@@ -277,6 +277,71 @@ class WeeklyReport(Base):
     semester = relationship("Semester", back_populates="weekly_reports")
 
 
+class DailyAttendanceRecord(Base):
+    """One member's clock-in result on one day of a week."""
+
+    __tablename__ = "daily_attendance_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "semester_id",
+            "week",
+            "attendance_date",
+            "member_name",
+            name="uq_daily_attendance",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    semester_id = Column(
+        UUID(as_uuid=True), ForeignKey("semesters.id", ondelete="CASCADE"), nullable=False
+    )
+    week = Column(Integer, nullable=False, index=True)
+    attendance_date = Column(Date, nullable=False)
+    member_name = Column(String, nullable=False, index=True)
+    feishu_user_id = Column(String, nullable=True)
+    status = Column(String, nullable=False)
+
+
+class SeminarAttendanceRecord(Base):
+    """Whether one member showed up to the seminar of a given week."""
+
+    __tablename__ = "seminar_attendance_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "semester_id", "week", "member_name", name="uq_seminar_attendance"
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    semester_id = Column(
+        UUID(as_uuid=True), ForeignKey("semesters.id", ondelete="CASCADE"), nullable=False
+    )
+    week = Column(Integer, nullable=False, index=True)
+    member_name = Column(String, nullable=False, index=True)
+    observed = Column(Boolean, nullable=False, default=False)
+    # How the row was produced: the clock-in flow, a group relay, or a manual edit.
+    source = Column(String, nullable=False, default="flow")
+    seminar_date = Column(Date, nullable=True)
+
+
+class GroupMeetingPlan(Base):
+    """One BILP group-meeting scheduling request and its solution."""
+
+    __tablename__ = "group_meeting_plans"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    semester_id = Column(
+        UUID(as_uuid=True), ForeignKey("semesters.id", ondelete="SET NULL"), nullable=True
+    )
+    status = Column(String, nullable=False, default="pending", index=True)
+    job_id = Column(String, nullable=True, index=True)
+    params = Column(JSONB, nullable=False, default=dict)
+    result = Column(JSONB, nullable=False, default=dict)
+    validation = Column(JSONB, nullable=False, default=dict)
+    solver_status = Column(String, nullable=True)
+    error = Column(Text, nullable=True)
+
+
 class ScheduleEntry(Base):
     """A course slot that exempts a member from attendance requirements."""
 

@@ -1,6 +1,7 @@
 """Member master data queries."""
 
 from typing import List, Optional
+from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import Member
@@ -89,6 +90,25 @@ class CRUDMember(CRUDBase[Member, MemberCreate, MemberUpdate]):
     def get_by_name(self, db: Session, *, name: str) -> Optional[Member]:
         return db.query(Member).filter(Member.name == name).first()
 
+    def get_by_feishu_user_id(
+        self, db: Session, *, feishu_user_id: str
+    ) -> Optional[Member]:
+        return (
+            db.query(Member).filter(Member.feishu_user_id == feishu_user_id).first()
+        )
+
+    def mark_need_attendance(self, db: Session, *, member_ids: List[UUID]) -> int:
+        """Flag the given members as expected to attendance, in one transaction."""
+        if not member_ids:
+            return 0
+        updated = (
+            db.query(Member)
+            .filter(Member.id.in_(member_ids))
+            .update({Member.need_attendance: True}, synchronize_session=False)
+        )
+        db.commit()
+        return int(updated)
+    
     def distinct_values(self, db: Session, column: str) -> List[str]:
         columns = {
             "advisor": Member.advisor,
