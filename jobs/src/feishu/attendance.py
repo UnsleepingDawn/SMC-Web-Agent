@@ -105,11 +105,12 @@ def query_daily_stats(
         "need_history": False,
         "current_group_only": True,
     }
-    if operator_user_id:
-        body["user_id"] = operator_user_id
+    # The endpoint demands an operator user_id even for app-level calls; fall
+    # back to the first queried user so a bare sync does not fail on it.
+    body["user_id"] = operator_user_id or (user_ids[0] if user_ids else "")
     data = client.request(
         "POST",
-        "attendance/v1/user_stats_data/query",
+        "attendance/v1/user_stats_datas/query",
         params={"employee_type": "employee_id"},
         json_body=body,
     )
