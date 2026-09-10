@@ -10,10 +10,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/common/EmptyState";
 import { MessagePreview } from "@/components/common/MessagePreview";
 import { PageHeader } from "@/components/common/PageHeader";
+import { RecipientPicker } from "@/components/common/RecipientPicker";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useWeeklyReports } from "@/hooks/useWeeklyReports";
 import { previewWeeklySummary, pushWeeklySummary, remindMissingReports } from "@/lib/api";
-import { PostMessage } from "@/lib/schema";
+import { PostMessage, Recipient } from "@/lib/schema";
 import { toast } from "sonner";
 
 export default function WeeklyReportsPage() {
@@ -22,7 +23,7 @@ export default function WeeklyReportsPage() {
 	const activeWeek = week ?? currentWeek ?? 0;
 	const { stats, isLoading, error } = useWeeklyReports(activeWeek, semester?.id);
 
-	const [receiveId, setReceiveId] = useState("");
+	const [recipient, setRecipient] = useState<Recipient | null>(null);
 	const [preview, setPreview] = useState<PostMessage | null>(null);
 	const [isPreviewing, setIsPreviewing] = useState(false);
 	const [isPushing, setIsPushing] = useState(false);
@@ -57,13 +58,17 @@ export default function WeeklyReportsPage() {
 	};
 
 	const handlePush = async () => {
-		if (!receiveId.trim()) {
-			toast.error("请填写接收者 ID（群 chat_id 或用户 open_id）。");
+		if (!recipient) {
+			toast.error("请选择要推送的接收者。");
 			return;
 		}
 		setIsPushing(true);
 		try {
-			await pushWeeklySummary(activeWeek, { receive_id: receiveId.trim() }, semester?.id);
+			await pushWeeklySummary(
+				activeWeek,
+				{ receive_id: recipient.receive_id, receive_id_type: recipient.receive_id_type },
+				semester?.id,
+			);
 			toast.success("已提交推送任务。");
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : "推送失败。");
@@ -183,12 +188,11 @@ export default function WeeklyReportsPage() {
 					</div>
 					<div className="flex flex-col gap-3 sm:flex-row sm:items-end">
 						<div className="flex-1 space-y-2">
-							<Label htmlFor="weekly-receive">接收者 ID</Label>
-							<Input
-								id="weekly-receive"
-								value={receiveId}
-								onChange={(event) => setReceiveId(event.target.value)}
-								placeholder="群 chat_id 或用户 open_id"
+							<Label>接收者</Label>
+							<RecipientPicker
+								value={recipient}
+								onChange={setRecipient}
+								disabled={isPushing}
 							/>
 						</div>
 						<Button onClick={handlePush} disabled={isPushing}>

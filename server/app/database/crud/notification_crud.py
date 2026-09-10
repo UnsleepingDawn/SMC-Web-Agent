@@ -29,6 +29,22 @@ class CRUDNotification(CRUDBase[Notification, NotificationCreate, NotificationUp
             db.query(Notification).order_by(Notification.created_at.desc()).limit(limit).all()
         )
 
+    def list_recent_targets(self, db: Session, *, limit: int = 3) -> List[str]:
+        """The most recent distinct push targets, newest first."""
+        rows = (
+            db.query(Notification.target)
+            .order_by(Notification.created_at.desc())
+            .limit(200)
+            .all()
+        )
+        targets: List[str] = []
+        for (target,) in rows:
+            if target and target not in targets:
+                targets.append(target)
+            if len(targets) >= limit:
+                break
+        return targets
+
     def mark_sent(self, db: Session, *, notification: Notification) -> Notification:
         notification.status = "sent"
         notification.sent_at = datetime.now(timezone.utc)

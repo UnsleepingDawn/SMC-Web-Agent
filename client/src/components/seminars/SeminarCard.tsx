@@ -5,11 +5,11 @@ import { Loader2, Pencil, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MessagePreview } from "@/components/common/MessagePreview";
+import { RecipientPicker } from "@/components/common/RecipientPicker";
 import { previewSeminar, pushSeminar } from "@/lib/api";
-import { PostMessage, Seminar, WEEKDAY_NAMES } from "@/lib/schema";
+import { PostMessage, Recipient, Seminar, WEEKDAY_NAMES } from "@/lib/schema";
 import { toast } from "sonner";
 
 interface SeminarCardProps {
@@ -19,7 +19,7 @@ interface SeminarCardProps {
 }
 
 export function SeminarCard({ seminar, onEdit, onChanged }: SeminarCardProps) {
-	const [receiveId, setReceiveId] = useState("");
+	const [recipient, setRecipient] = useState<Recipient | null>(null);
 	const [preview, setPreview] = useState<PostMessage | null>(null);
 	const [isPreviewing, setIsPreviewing] = useState(false);
 	const [isPushing, setIsPushing] = useState(false);
@@ -37,14 +37,15 @@ export function SeminarCard({ seminar, onEdit, onChanged }: SeminarCardProps) {
 	};
 
 	const handlePush = async () => {
-		if (!receiveId.trim()) {
-			toast.error("请填写接收者 ID（群 chat_id 或用户 open_id）。");
+		if (!recipient) {
+			toast.error("请选择要推送的接收者。");
 			return;
 		}
 		setIsPushing(true);
 		try {
 			await pushSeminar(seminar.semester_id, seminar.week, {
-				receive_id: receiveId.trim(),
+				receive_id: recipient.receive_id,
+				receive_id_type: recipient.receive_id_type,
 			});
 			toast.success("已提交推送任务。");
 			onChanged();
@@ -104,12 +105,11 @@ export function SeminarCard({ seminar, onEdit, onChanged }: SeminarCardProps) {
 					<div className="space-y-3 border-t pt-4">
 						<div className="flex flex-col gap-3 sm:flex-row sm:items-end">
 							<div className="flex-1 space-y-2">
-								<Label htmlFor={`receive-${seminar.id}`}>接收者 ID</Label>
-								<Input
-									id={`receive-${seminar.id}`}
-									value={receiveId}
-									onChange={(event) => setReceiveId(event.target.value)}
-									placeholder="群 chat_id 或用户 open_id"
+								<Label>接收者</Label>
+								<RecipientPicker
+									value={recipient}
+									onChange={setRecipient}
+									disabled={isPushing}
 								/>
 							</div>
 							<div className="flex gap-2">

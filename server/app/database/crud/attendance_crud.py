@@ -216,6 +216,15 @@ class CRUDAttendanceGroup(CRUDBase[AttendanceGroup, AttendanceGroupCreate, BaseM
     def get_by_name(self, db: Session, *, name: str) -> Optional[AttendanceGroup]:
         return db.query(AttendanceGroup).filter(AttendanceGroup.name == name).first()
 
+    def get_by_feishu_group_id(
+        self, db: Session, *, feishu_group_id: str
+    ) -> Optional[AttendanceGroup]:
+        return (
+            db.query(AttendanceGroup)
+            .filter(AttendanceGroup.feishu_group_id == feishu_group_id)
+            .first()
+        )
+
     def replace_members(
         self,
         db: Session,

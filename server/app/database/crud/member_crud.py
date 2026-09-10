@@ -90,6 +90,23 @@ class CRUDMember(CRUDBase[Member, MemberCreate, MemberUpdate]):
     def get_by_name(self, db: Session, *, name: str) -> Optional[Member]:
         return db.query(Member).filter(Member.name == name).first()
 
+    def list_recipients(
+        self, db: Session, *, search: str, limit: int = 20
+    ) -> List[Member]:
+        """Active members whose name matches and who carry a Feishu open_id."""
+        pattern = f"%{search.strip()}%"
+        return (
+            db.query(Member)
+            .filter(
+                Member.name.ilike(pattern),
+                Member.feishu_account.isnot(None),
+                Member.feishu_account != "",
+            )
+            .order_by(Member.name)
+            .limit(limit)
+            .all()
+        )
+
     def get_by_feishu_user_id(
         self, db: Session, *, feishu_user_id: str
     ) -> Optional[Member]:

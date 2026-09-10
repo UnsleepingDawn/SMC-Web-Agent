@@ -8,6 +8,7 @@ import type {
 	MemberFilters,
 	Notification,
 	PostMessage,
+	Recipient,
 	ScheduleEntry,
 	Seminar,
 	SeminarAttendanceSummary,
@@ -233,6 +234,13 @@ export function pushWeeklySummary(
 
 export function getNotifications(limit = 50): Promise<{ notifications: Notification[] }> {
     return fetchFromApi(`/api/notifications?limit=${limit}`);
+}
+
+/** Empty `search` returns the most recent push targets; otherwise name matches. */
+export function searchRecipients(search = '', limit = 20): Promise<{ recipients: Recipient[] }> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (search.trim()) query.set('search', search.trim());
+    return fetchFromApi(`/api/notifications/recipients?${query.toString()}`);
 }
 
 /* --------------------------------------------------------------------- sync */

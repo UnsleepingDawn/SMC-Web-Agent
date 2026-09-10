@@ -145,6 +145,15 @@ export interface SyncRun {
 	created_at: string | null;
 }
 
+/** A push target: a lab member (open_id) or a group chat (chat_id). */
+export interface Recipient {
+	receive_id: string;
+	receive_id_type: "open_id" | "chat_id";
+	name: string;
+	kind: "user" | "chat";
+	subtitle: string;
+}
+
 export interface FeishuConfig {
 	app_id: string;
 	app_secret_configured: boolean;
