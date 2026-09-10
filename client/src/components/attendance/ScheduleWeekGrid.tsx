@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { type CSSProperties, useMemo } from "react";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { useIsDarkMode } from "@/hooks/useDarkMode";
 import { WEEKDAY_NAMES } from "@/lib/schema";
 import type { ScheduleEntry } from "@/lib/schema";
 import { CLASS_SECTION_TIMES, toMinutes } from "@/lib/timetable";
@@ -15,25 +16,15 @@ const WEEKDAYS = WEEKDAY_NAMES.slice(0, 5);
 /** Fixed body height in px; the vertical axis is scaled onto this. */
 const BODY_HEIGHT = 640;
 
-/** Cell fills, low -> high headcount. Keep the fill in sync with `swatch`. */
-const INTENSITY_LEVELS = [
-	{
-		cell: "bg-blue-50 text-blue-700 ring-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:ring-blue-900",
-		swatch: "bg-blue-50 dark:bg-blue-950",
-	},
-	{
-		cell: "bg-blue-100 text-blue-800 ring-blue-200 dark:bg-blue-900 dark:text-blue-100 dark:ring-blue-800",
-		swatch: "bg-blue-100 dark:bg-blue-900",
-	},
-	{
-		cell: "bg-blue-500 text-white ring-blue-600 dark:bg-blue-600 dark:text-white dark:ring-blue-500",
-		swatch: "bg-blue-500 dark:bg-blue-600",
-	},
-	{
-		cell: "bg-blue-600 text-white ring-blue-700 dark:bg-blue-400 dark:text-blue-950 dark:ring-blue-300",
-		swatch: "bg-blue-600 dark:bg-blue-400",
-	},
-];
+/**
+ * Fill endpoints for the headcount ramp. Light mode stays in the pale end of
+ * the palette (blue-50 -> blue-300), so even the busiest slot reads as light;
+ * dark mode uses deeper, still-muted blues for contrast.
+ */
+const FILL_ENDPOINTS = {
+	light: { low: "var(--color-blue-50)", high: "var(--color-blue-300)" },
+	dark: { low: "var(--color-blue-950)", high: "var(--color-blue-700)" },
+} as const;
 
 interface SectionSlot {
 	period: string;
@@ -52,6 +43,13 @@ function formatMinutes(minutes: number): string {
 
 /** A week agenda: one rounded block per course section, sized by its real time. */
 export function ScheduleWeekGrid({ entries }: ScheduleWeekGridProps) {
+	const { darkMode } = useIsDarkMode();
+	const fill = darkMode ? FILL_ENDPOINTS.dark : FILL_ENDPOINTS.light;
+	/** A fill between the low/high endpoints; `ratio` 0 -> palest, 1 -> deepest. */
+	const fillStyle = (ratio: number): CSSProperties => ({
+		backgroundColor: `color-mix(in oklab, ${fill.high} ${ratio * 100}%, ${fill.low})`,
+	});
+
 	const slots = useMemo<SectionSlot[]>(() => {
 		const list: SectionSlot[] = [];
 		for (const [period, sections] of Object.entries(CLASS_SECTION_TIMES)) {
@@ -104,12 +102,12 @@ export function ScheduleWeekGrid({ entries }: ScheduleWeekGridProps) {
 				<span>每个矩形为一个节次，颜色越深表示该时段上课人数越多；悬停查看学生名单。</span>
 				<span className="flex items-center gap-1.5">
 					<span>上课人数少</span>
-					{INTENSITY_LEVELS.map((level) => (
-						<span
-							key={level.swatch}
-							className={cn("h-3 w-5 rounded-sm ring-1 ring-inset ring-black/5", level.swatch)}
-						/>
-					))}
+					<span
+						className="h-3 w-20 rounded-sm ring-1 ring-inset ring-black/5 dark:ring-white/10"
+						style={{
+							backgroundImage: `linear-gradient(to right, ${fill.low}, ${fill.high})`,
+						}}
+					/>
 					<span>多</span>
 				</span>
 			</div>
@@ -161,15 +159,9 @@ export function ScheduleWeekGrid({ entries }: ScheduleWeekGridProps) {
 										const names = Array.from(cell.names).sort((a, b) =>
 											a.localeCompare(b, "zh"),
 										);
-										const level =
-											maxCount <= 1
-												? INTENSITY_LEVELS[0]
-												: INTENSITY_LEVELS[
-														Math.round(
-															((cell.names.size - 1) / (maxCount - 1)) *
-																(INTENSITY_LEVELS.length - 1),
-														)
-													];
+										// Smooth ramp relative to the busiest slot, so the deepest
+										// fill still stays in the pale end of the palette.
+										const ratio = maxCount > 0 ? cell.names.size / maxCount : 0;
 										const height = percent(slot.end) - percent(slot.start);
 										const label = `${day}${slot.period}${slot.section}`;
 
@@ -188,9 +180,9 @@ export function ScheduleWeekGrid({ entries }: ScheduleWeekGridProps) {
 															type="button"
 															aria-label={`${label} ${cell.names.size} 人`}
 															className={cn(
-																"flex h-full w-full items-center justify-center rounded-md text-xs font-semibold ring-1 ring-inset transition-colors",
-																level.cell,
+																"flex h-full w-full items-center justify-center rounded-md text-xs font-semibold text-blue-950 ring-1 ring-inset ring-black/5 transition-colors dark:text-blue-50 dark:ring-white/10",
 															)}
+															style={fillStyle(ratio)}
 														>
 															{cell.names.size}人
 														</button>
