@@ -3,6 +3,7 @@ import type {
 	DailyAttendanceSummary,
 	FeishuConfig,
 	GroupMeetingConfig,
+	GroupMeetingDraft,
 	GroupMeetingPlan,
 	Member,
 	MemberFilters,
@@ -368,4 +369,23 @@ export function getGroupMeetingPlans(limit = 20): Promise<{ plans: GroupMeetingP
 
 export function getGroupMeetingPlan(planId: string): Promise<{ plan: GroupMeetingPlan }> {
     return fetchFromApi(`/api/group-meeting/plans/${planId}`);
+}
+
+export function getGroupMeetingDraft(
+    semesterId: string,
+): Promise<{ draft: GroupMeetingDraft | null }> {
+    const query = new URLSearchParams({ semester_id: semesterId });
+    return fetchFromApi(`/api/group-meeting/draft?${query.toString()}`);
+}
+
+export function saveGroupMeetingDraft(payload: {
+    semester_id: string;
+    name_list: string[];
+    already_grouped: string[][];
+    meeting_periods: string[];
+}): Promise<{ draft: GroupMeetingDraft | null }> {
+    return fetchFromApi('/api/group-meeting/draft', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+    });
 }

@@ -280,3 +280,10 @@ export interface GroupMeetingConfig {
 	}[];
 	weights: Record<string, number>;
 }
+
+/** The planner form state the signed-in user last submitted for a semester. */
+export interface GroupMeetingDraft {
+	name_list: string[];
+	already_grouped: string[][];
+	meeting_periods: string[];
+}

@@ -342,6 +342,32 @@ class GroupMeetingPlan(Base):
     error = Column(Text, nullable=True)
 
 
+class GroupMeetingDraft(Base):
+    """The planner form state one user last submitted for one semester."""
+
+    __tablename__ = "group_meeting_drafts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "semester_id", name="uq_group_meeting_draft"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    semester_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("semesters.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name_list = Column(JSONB, nullable=False, default=list)
+    already_grouped = Column(JSONB, nullable=False, default=list)
+    meeting_periods = Column(JSONB, nullable=False, default=list)
+
+
 class ScheduleEntry(Base):
     """A course slot that exempts a member from attendance requirements."""
 

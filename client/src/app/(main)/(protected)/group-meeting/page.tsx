@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { Loader2 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useGroupMeeting } from "@/hooks/useGroupMeeting";
+import { useGroupMeetingDraft } from "@/hooks/useGroupMeetingDraft";
 import { createGroupMeetingPlan, getMembers } from "@/lib/api";
 import type { Member } from "@/lib/schema";
 import { ENROLLED_STATUS, WEEKDAY_NAMES } from "@/lib/schema";
@@ -37,6 +38,7 @@ function parseGroups(text: string): string[][] {
 export default function GroupMeetingPage() {
 	const { semester } = useCurrentSemester();
 	const { config, plans, isLoading, error, refetch } = useGroupMeeting();
+	const { draft, save: saveDraft } = useGroupMeetingDraft(semester?.id ?? null);
 	const [members, setMembers] = useState<Member[]>([]);
 	const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
 	const [groupText, setGroupText] = useState("");
@@ -44,12 +46,35 @@ export default function GroupMeetingPage() {
 	const [selectedPeriods, setSelectedPeriods] = useState<Set<string>>(new Set(["下午"]));
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [activePlanId, setActivePlanId] = useState<string | null>(null);
+	const appliedDraftFor = useRef<string | null>(null);
 
 	useEffect(() => {
 		getMembers({ is_active: true, enrollment_status: ENROLLED_STATUS })
 			.then((response) => setMembers(response.members))
 			.catch(() => setMembers([]));
 	}, []);
+
+	// Restore the last submitted selection once the roster is available.
+	useEffect(() => {
+		const semesterId = semester?.id;
+		if (!semesterId || !draft || members.length === 0) return;
+		if (appliedDraftFor.current === semesterId) return;
+		appliedDraftFor.current = semesterId;
+
+		const known = new Set(members.map((member) => member.name));
+		setSelectedNames(new Set(draft.name_list.filter((name) => known.has(name))));
+		setGroupText(draft.already_grouped.map((group) => group.join("、")).join("\n"));
+
+		const days = new Set<string>();
+		const periods = new Set<string>();
+		for (const period of draft.meeting_periods) {
+			if (period.length < 3) continue;
+			days.add(period.slice(0, 2));
+			periods.add(period.slice(2));
+		}
+		if (days.size > 0) setSelectedDays(days);
+		if (periods.size > 0) setSelectedPeriods(periods);
+	}, [draft, members, semester?.id]);
 
 	const toggle = (
 		setter: Dispatch<SetStateAction<Set<string>>>,
@@ -82,19 +107,29 @@ export default function GroupMeetingPage() {
 		selectedDays.forEach((day) =>
 			selectedPeriods.forEach((period) => meetingPeriods.push(`${day}${period}`)),
 		);
+		const nameList = Array.from(selectedNames);
+		const alreadyGrouped = parseGroups(groupText);
 
 		setIsSubmitting(true);
 		try {
 			const response = await createGroupMeetingPlan({
 				semester_id: semester.id,
-				name_list: Array.from(selectedNames),
-				already_grouped: parseGroups(groupText),
+				name_list: nameList,
+				already_grouped: alreadyGrouped,
 				meeting_periods: meetingPeriods,
 				weights: config?.weights,
 			});
 			setActivePlanId(response.plan_id);
 			toast.success("已提交排班任务，正在求解。");
 			await refetch();
+			// Remember this selection so the next visit restores it.
+			saveDraft({
+				name_list: nameList,
+				already_grouped: alreadyGrouped,
+				meeting_periods: meetingPeriods,
+			}).catch((saveError) => {
+				console.error("保存排班选择失败", saveError);
+			});
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : "提交排班失败。");
 		} finally {

@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
-from app.database.models import GroupMeetingPlan
+from app.database.models import GroupMeetingDraft, GroupMeetingPlan
+from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -90,3 +91,49 @@ class CRUDGroupMeetingPlan(
 
 
 group_meeting_plan = CRUDGroupMeetingPlan(GroupMeetingPlan)
+
+
+class GroupMeetingDraftCreate(BaseModel):
+    semester_id: UUID
+    user_id: Optional[UUID] = None
+    name_list: List[str] = []
+    already_grouped: List[List[str]] = []
+    meeting_periods: List[str] = []
+
+
+class CRUDGroupMeetingDraft(
+    CRUDBase[GroupMeetingDraft, GroupMeetingDraftCreate, BaseModel]
+):
+    def upsert(
+        self,
+        db: Session,
+        *,
+        user: CurrentUser,
+        semester_id: UUID,
+        name_list: List[str],
+        already_grouped: List[List[str]],
+        meeting_periods: List[str],
+    ) -> Optional[GroupMeetingDraft]:
+        """Replace the user's saved selection for the semester, creating it once."""
+        draft = self.get_by(db, user=user, semester_id=semester_id)
+        if not draft:
+            return self.create(
+                db,
+                user=user,
+                obj_in=GroupMeetingDraftCreate(
+                    semester_id=semester_id,
+                    name_list=name_list,
+                    already_grouped=already_grouped,
+                    meeting_periods=meeting_periods,
+                ),
+            )
+        draft.name_list = name_list
+        draft.already_grouped = already_grouped
+        draft.meeting_periods = meeting_periods
+        db.add(draft)
+        db.commit()
+        db.refresh(draft)
+        return draft
+
+
+group_meeting_draft = CRUDGroupMeetingDraft(GroupMeetingDraft)

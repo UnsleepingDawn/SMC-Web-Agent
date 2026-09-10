@@ -5,9 +5,10 @@ presents in. It is a pure function of its inputs: the server assembles the
 member list and the course-conflict matrix, the worker runs CBC, and the
 solution goes back over the webhook.
 
-The code deliberately keeps the original model's shape (seven binary variable
-families, the same constraints and weights) so the results stay comparable to
-the CLI tool.
+The code keeps the original model's shape (seven binary variable families, the
+same constraints and weights) so the results stay comparable to the CLI tool,
+with one added rule: each morning session is filled up to three groups, using a
+penalised slack variable so a roster that cannot fill it still solves.
 """
 
 from __future__ import annotations
@@ -25,13 +26,21 @@ logger = logging.getLogger(__name__)
 WEIGHT_TWO = 1
 WEIGHT_FOUR = 5
 WEIGHT_LAST_SLOT = 2
+# Every morning session should present this many groups. The shortfall penalty
+# is kept below WEIGHT_TWO so the solver fills a morning with groups it already
+# needs, but never invents an extra 2-person group just to reach the target:
+# best effort, under-filling is acceptable when the roster cannot fill it.
+MORNING_PERIOD = "上午"
+MORNING_TARGET_GROUPS = 3
+WEIGHT_MORNING_SHORTFALL = 0.5
 
 
-def _default_weights() -> Dict[str, int]:
+def _default_weights() -> Dict[str, float]:
     return {
         "w2": WEIGHT_TWO,
         "w4": WEIGHT_FOUR,
         "alpha": WEIGHT_LAST_SLOT,
+        "beta": WEIGHT_MORNING_SHORTFALL,
     }
 
 
@@ -41,7 +50,7 @@ def solve_group_meeting(
     slots: Sequence[Dict[str, Any]],
     busy_pairs: Optional[Sequence[Sequence[int]]] = None,
     already_grouped: Optional[Sequence[Sequence[str]]] = None,
-    weights: Optional[Dict[str, int]] = None,
+    weights: Optional[Dict[str, float]] = None,
     time_limit_seconds: int = 60,
 ) -> Dict[str, Any]:
     """Solve the grouping and scheduling problem.
@@ -53,7 +62,7 @@ def solve_group_meeting(
     if not names:
         raise ValueError("参会名单不能为空")
 
-    weights = weights or _default_weights()
+    weights = {**_default_weights(), **(weights or {})}
     already = [list(group) for group in (already_grouped or [])]
     busy = {(int(pair[0]), int(pair[1])) for pair in (busy_pairs or [])}
 
@@ -88,12 +97,32 @@ def solve_group_meeting(
     is_four = pulp.LpVariable.dicts("s4", groups, cat=pulp.LpBinary)
     last = pulp.LpVariable.dicts("l", groups, cat=pulp.LpBinary)
 
+    # Group the morning slots by session (one per selected "weekday + 上午").
+    # Each session gets a slack variable for the groups it falls short of the
+    # target, letting the model under-fill instead of turning infeasible.
+    morning_slots: Dict[Tuple[str, str], List[int]] = {}
+    for p in slot_indexes:
+        slot = slots[p]
+        if str(slot.get("period")) == MORNING_PERIOD:
+            morning_slots.setdefault(
+                (str(slot.get("day")), MORNING_PERIOD), []
+            ).append(p)
+    shortfall = {
+        key: pulp.LpVariable(
+            f"m{index}",
+            lowBound=0,
+            upBound=min(MORNING_TARGET_GROUPS, len(slot_ids)),
+            cat="Integer",
+        )
+        for index, (key, slot_ids) in enumerate(morning_slots.items())
+    }
+
     problem += pulp.lpSum(
         weights["w2"] * is_two[g]
         + weights["w4"] * is_four[g]
         + weights["alpha"] * last[g]
         for g in groups
-    )
+    ) + weights["beta"] * pulp.lpSum(shortfall.values())
 
     # Every member belongs to exactly one group.
     for i in members:
@@ -114,6 +143,16 @@ def solve_group_meeting(
     # One group per 30-minute slot: the lab books a single room.
     for p in slot_indexes:
         problem += pulp.lpSum(scheduled[g][p] for g in groups) <= 1
+
+    # Each morning session presents up to MORNING_TARGET_GROUPS groups, and the
+    # slack covers any shortfall so a small roster cannot make the model fail.
+    for key, slot_ids in morning_slots.items():
+        target = min(MORNING_TARGET_GROUPS, len(slot_ids))
+        problem += (
+            pulp.lpSum(scheduled[g][p] for g in groups for p in slot_ids)
+            + shortfall[key]
+            == target
+        )
 
     # No member may be scheduled into a slot they have a class in.
     for (i, p) in busy:

@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import type { GroupMeetingPlan } from "@/lib/schema";
+import { WEEKDAY_NAMES } from "@/lib/schema";
 
 const STATUS_LABELS: Record<string, string> = {
 	pending: "排队中",
@@ -17,8 +18,22 @@ const STATUS_VARIANTS: Record<string, "secondary" | "default" | "destructive"> =
 	failed: "destructive",
 };
 
+const DAY_ORDER = new Map<string, number>(
+	WEEKDAY_NAMES.map((day, index) => [day, index]),
+);
+
+/** Slots in chronological order, so groups read top-to-bottom by time. */
+function sortByTime(slots: GroupMeetingPlan["params"]["slots"]) {
+	return [...slots].sort((left, right) => {
+		const leftDay = DAY_ORDER.get(left.day) ?? Number.MAX_SAFE_INTEGER;
+		const rightDay = DAY_ORDER.get(right.day) ?? Number.MAX_SAFE_INTEGER;
+		if (leftDay !== rightDay) return leftDay - rightDay;
+		return left.start.localeCompare(right.start);
+	});
+}
+
 export function GroupMeetingResult({ plan }: { plan: GroupMeetingPlan }) {
-	const slots = plan.params.slots ?? [];
+	const slots = sortByTime(plan.params.slots ?? []);
 	const result = plan.result ?? {};
 	const missing = plan.validation?.missing ?? [];
 	const conflicts = plan.validation?.conflicts ?? [];

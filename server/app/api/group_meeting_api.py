@@ -10,6 +10,7 @@ from app.auth.dependencies import get_required_user
 from app.database.crud.attendance_crud import schedule_entry as schedule_entry_crud
 from app.database.crud.group_meeting_crud import (
     GroupMeetingPlanCreate,
+    group_meeting_draft as group_meeting_draft_crud,
     group_meeting_plan as group_meeting_plan_crud,
 )
 from app.database.crud.member_crud import member as member_crud
@@ -17,6 +18,7 @@ from app.database.crud.semester_crud import semester as semester_crud
 from app.database.database import get_db
 from app.helpers.feishu_jobs import feishu_jobs
 from app.helpers.meeting_slots import (
+    WEEKDAY_NAMES,
     SlotError,
     expand_slots,
     build_busy_pairs,
@@ -31,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 group_meeting_router = APIRouter()
 
-DEFAULT_WEIGHTS = {"w2": 1, "w4": 5, "alpha": 2}
+DEFAULT_WEIGHTS = {"w2": 1, "w4": 5, "alpha": 2, "beta": 0.5}
 
 # Mirrors ENROLLED_STATUS in the client; participants must be currently studying.
 ENROLLED_STATUS = "在读"
@@ -42,7 +44,14 @@ class PlanRequest(BaseModel):
     name_list: List[str]
     already_grouped: List[List[str]] = Field(default_factory=list)
     meeting_periods: List[str]
-    weights: Optional[Dict[str, int]] = None
+    weights: Optional[Dict[str, float]] = None
+
+
+class DraftRequest(BaseModel):
+    semester_id: str
+    name_list: List[str] = Field(default_factory=list)
+    already_grouped: List[List[str]] = Field(default_factory=list)
+    meeting_periods: List[str] = Field(default_factory=list)
 
 
 def _resolve_semester(db: Session, semester_id: str):
@@ -159,6 +168,9 @@ def create_group_meeting_plan(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         )
+    # Chronological order so the solver treats the last slot consistently and
+    # the client renders results top-to-bottom in time order.
+    slots.sort(key=lambda slot: (WEEKDAY_NAMES.index(slot["day"]), slot["start"]))
 
     schedule = schedule_entry_crud.list_by_semester(db, semester_id=semester.id)
     busy_pairs = build_busy_pairs(name_list, slots, schedule)
@@ -220,3 +232,55 @@ def get_group_meeting_plan(
     if not plan:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该排班任务")
     return {"plan": _serialize_plan(plan)}
+
+
+def _serialize_draft(draft) -> Optional[Dict[str, Any]]:
+    if not draft:
+        return None
+    return {
+        "name_list": draft.name_list or [],
+        "already_grouped": draft.already_grouped or [],
+        "meeting_periods": draft.meeting_periods or [],
+    }
+
+
+@group_meeting_router.get("/draft")
+def get_group_meeting_draft(
+    semester_id: str,
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    """The signed-in user's last selection for this semester, if any."""
+    semester = _resolve_semester(db, semester_id)
+    draft = group_meeting_draft_crud.get_by(
+        db, user=current_user, semester_id=semester.id
+    )
+    return {"draft": _serialize_draft(draft)}
+
+
+@group_meeting_router.put("/draft")
+def save_group_meeting_draft(
+    payload: DraftRequest,
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    """Remember the current selection so the next visit restores it."""
+    semester = _resolve_semester(db, payload.semester_id)
+    draft = group_meeting_draft_crud.upsert(
+        db,
+        user=current_user,
+        semester_id=semester.id,
+        name_list=[
+            str(name).strip() for name in payload.name_list if str(name).strip()
+        ],
+        already_grouped=[
+            [str(name).strip() for name in group if str(name).strip()]
+            for group in payload.already_grouped
+        ],
+        meeting_periods=[str(period).strip() for period in payload.meeting_periods],
+    )
+    if not draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="保存排班草稿失败"
+        )
+    return {"draft": _serialize_draft(draft)}
