@@ -29,9 +29,8 @@ def list_group_users(client: FeishuClient, group_id: str) -> List[Dict[str, Any]
     users: List[Dict[str, Any]] = []
     for page in client.paginate(
         "GET",
-        "attendance/v1/groups/list_user",
+        f"attendance/v1/groups/{group_id}/list_user",
         params={
-            "group_id": group_id,
             "employee_type": "employee_id",
             "dept_type": "open_id",
             "member_clock_type": 1,
