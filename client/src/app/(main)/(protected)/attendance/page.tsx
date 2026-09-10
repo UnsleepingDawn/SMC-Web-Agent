@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { AttendanceBarChart } from "@/components/attendance/AttendanceBarChart";
+import { ScheduleWeekGrid } from "@/components/attendance/ScheduleWeekGrid";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
 import { SyncPanel } from "@/components/sync/SyncPanel";
@@ -380,28 +381,39 @@ export default function AttendancePage() {
 									还没有课表数据，请先在同步面板里选择「课表」。
 								</p>
 							) : (
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>姓名</TableHead>
-											{WEEKDAY_NAMES.slice(0, 5).map((day) => (
-												<TableHead key={day}>{day}</TableHead>
-											))}
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{Array.from(scheduleByMember.entries()).map(([name, days]) => (
-											<TableRow key={name}>
-												<TableCell className="font-medium align-top">{name}</TableCell>
-												{[1, 2, 3, 4, 5].map((weekday) => (
-													<TableCell key={weekday} className="align-top text-xs">
-														{(days[weekday] ?? []).join("、") || "-"}
-													</TableCell>
+								<Tabs defaultValue="week">
+									<TabsList>
+										<TabsTrigger value="week">周视图</TabsTrigger>
+										<TabsTrigger value="table">表格</TabsTrigger>
+									</TabsList>
+									<TabsContent value="week" className="mt-4">
+										<ScheduleWeekGrid entries={schedule} />
+									</TabsContent>
+									<TabsContent value="table" className="mt-4">
+										<Table>
+											<TableHeader>
+												<TableRow>
+													<TableHead>姓名</TableHead>
+													{WEEKDAY_NAMES.slice(0, 5).map((day) => (
+														<TableHead key={day}>{day}</TableHead>
+													))}
+												</TableRow>
+											</TableHeader>
+											<TableBody>
+												{Array.from(scheduleByMember.entries()).map(([name, days]) => (
+													<TableRow key={name}>
+														<TableCell className="font-medium align-top">{name}</TableCell>
+														{[1, 2, 3, 4, 5].map((weekday) => (
+															<TableCell key={weekday} className="align-top text-xs">
+																{(days[weekday] ?? []).join("、") || "-"}
+															</TableCell>
+														))}
+													</TableRow>
 												))}
-											</TableRow>
-										))}
-									</TableBody>
-								</Table>
+											</TableBody>
+										</Table>
+									</TabsContent>
+								</Tabs>
 							)}
 						</CardContent>
 					</Card>
