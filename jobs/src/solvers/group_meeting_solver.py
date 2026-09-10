@@ -7,12 +7,13 @@ solution goes back over the webhook.
 
 The code keeps the original model's shape (seven binary variable families, the
 same constraints and weights) so the results stay comparable to the CLI tool,
-with one added rule: each morning session is filled up to three groups, using a
-penalised slack variable so a roster that cannot fill it still solves.
+with two added rules: each morning session is filled up to three groups, and
+every session's groups are scheduled back-to-back with no gaps.
 """
 
 from __future__ import annotations
 
+import itertools
 import logging
 import math
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -33,6 +34,10 @@ WEIGHT_LAST_SLOT = 2
 MORNING_PERIOD = "上午"
 MORNING_TARGET_GROUPS = 3
 WEIGHT_MORNING_SHORTFALL = 0.5
+# Tie-break only: among solutions that cost the same, pack each session's
+# groups into the earliest slots so a session reads 第1、2、3组 instead of
+# 第1、3、4组. Small enough to never change group count, sizes or morning fill.
+WEIGHT_EARLY_SLOT = 0.001
 
 
 def _default_weights() -> Dict[str, float]:
@@ -41,6 +46,7 @@ def _default_weights() -> Dict[str, float]:
         "w4": WEIGHT_FOUR,
         "alpha": WEIGHT_LAST_SLOT,
         "beta": WEIGHT_MORNING_SHORTFALL,
+        "gamma": WEIGHT_EARLY_SLOT,
     }
 
 
@@ -97,16 +103,26 @@ def solve_group_meeting(
     is_four = pulp.LpVariable.dicts("s4", groups, cat=pulp.LpBinary)
     last = pulp.LpVariable.dicts("l", groups, cat=pulp.LpBinary)
 
-    # Group the morning slots by session (one per selected "weekday + 上午").
-    # Each session gets a slack variable for the groups it falls short of the
-    # target, letting the model under-fill instead of turning infeasible.
-    morning_slots: Dict[Tuple[str, str], List[int]] = {}
+    # Group slots into sessions (one per selected "weekday + period"), keeping
+    # each session's slots in chronological order so back-to-back groups and the
+    # earliness tie-break follow real time.
+    session_slots: Dict[Tuple[str, str], List[int]] = {}
     for p in slot_indexes:
         slot = slots[p]
-        if str(slot.get("period")) == MORNING_PERIOD:
-            morning_slots.setdefault(
-                (str(slot.get("day")), MORNING_PERIOD), []
-            ).append(p)
+        key = (str(slot.get("day")), str(slot.get("period")))
+        session_slots.setdefault(key, []).append(p)
+    for slot_ids in session_slots.values():
+        slot_ids.sort(
+            key=lambda p: (str(slots[p].get("start") or ""), str(slots[p].get("name") or ""))
+        )
+
+    # Each morning session gets a slack variable for the groups it falls short
+    # of the target, letting the model under-fill instead of turning infeasible.
+    morning_sessions = [
+        (key, slot_ids)
+        for key, slot_ids in session_slots.items()
+        if key[1] == MORNING_PERIOD
+    ]
     shortfall = {
         key: pulp.LpVariable(
             f"m{index}",
@@ -114,15 +130,25 @@ def solve_group_meeting(
             upBound=min(MORNING_TARGET_GROUPS, len(slot_ids)),
             cat="Integer",
         )
-        for index, (key, slot_ids) in enumerate(morning_slots.items())
+        for index, (key, slot_ids) in enumerate(morning_sessions)
     }
 
-    problem += pulp.lpSum(
-        weights["w2"] * is_two[g]
-        + weights["w4"] * is_four[g]
-        + weights["alpha"] * last[g]
-        for g in groups
-    ) + weights["beta"] * pulp.lpSum(shortfall.values())
+    problem += (
+        pulp.lpSum(
+            weights["w2"] * is_two[g]
+            + weights["w4"] * is_four[g]
+            + weights["alpha"] * last[g]
+            for g in groups
+        )
+        + weights["beta"] * pulp.lpSum(shortfall.values())
+        + weights["gamma"]
+        * pulp.lpSum(
+            rank * scheduled[g][p]
+            for slot_ids in session_slots.values()
+            for rank, p in enumerate(slot_ids)
+            for g in groups
+        )
+    )
 
     # Every member belongs to exactly one group.
     for i in members:
@@ -144,9 +170,20 @@ def solve_group_meeting(
     for p in slot_indexes:
         problem += pulp.lpSum(scheduled[g][p] for g in groups) <= 1
 
+    # A session's groups sit back-to-back. Any pair of used slots with an unused
+    # slot between them is a gap like 第1、3、4组, so forbid every such triple.
+    for slot_ids in session_slots.values():
+        for before, gap, after in itertools.combinations(slot_ids, 3):
+            problem += (
+                pulp.lpSum(scheduled[g][before] for g in groups)
+                + pulp.lpSum(scheduled[g][after] for g in groups)
+                - pulp.lpSum(scheduled[g][gap] for g in groups)
+                <= 1
+            )
+
     # Each morning session presents up to MORNING_TARGET_GROUPS groups, and the
     # slack covers any shortfall so a small roster cannot make the model fail.
-    for key, slot_ids in morning_slots.items():
+    for key, slot_ids in morning_sessions:
         target = min(MORNING_TARGET_GROUPS, len(slot_ids))
         problem += (
             pulp.lpSum(scheduled[g][p] for g in groups for p in slot_ids)
