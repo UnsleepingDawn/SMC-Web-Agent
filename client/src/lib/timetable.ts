@@ -31,6 +31,21 @@ export const CLASS_SECTION_TIMES: Record<string, Record<string, ClassSectionTime
 	},
 };
 
+/** A day-independent break shown as one band across the whole week view. */
+export interface BreakSpan {
+	label: string;
+	start: string;
+	end: string;
+}
+
+/** Breaks shared by every weekday, as "HH:MM". */
+export const BREAK_SPANS: BreakSpan[] = [
+	{ label: "课间", start: "09:40", end: "10:10" },
+	{ label: "午休", start: "11:50", end: "14:20" },
+	{ label: "课间", start: "16:00", end: "16:30" },
+	{ label: "晚餐", start: "18:10", end: "19:00" },
+];
+
 /** "HH:MM" -> minutes since midnight. */
 export function toMinutes(hhmm: string): number {
 	const [hour, minute] = hhmm.split(":");

@@ -5,7 +5,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/h
 import { useIsDarkMode } from "@/hooks/useDarkMode";
 import { WEEKDAY_NAMES } from "@/lib/schema";
 import type { ScheduleEntry } from "@/lib/schema";
-import { CLASS_SECTION_TIMES, toMinutes } from "@/lib/timetable";
+import { BREAK_SPANS, CLASS_SECTION_TIMES, toMinutes } from "@/lib/timetable";
 import { cn } from "@/lib/utils";
 
 interface ScheduleWeekGridProps {
@@ -65,6 +65,16 @@ export function ScheduleWeekGrid({ entries }: ScheduleWeekGridProps) {
 		return list;
 	}, []);
 
+	const breaks = useMemo(
+		() =>
+			BREAK_SPANS.map((span) => ({
+				label: span.label,
+				start: toMinutes(span.start),
+				end: toMinutes(span.end),
+			})),
+		[],
+	);
+
 	const dayStart = Math.min(...slots.map((slot) => slot.start));
 	const dayEnd = Math.max(...slots.map((slot) => slot.end));
 	const total = dayEnd - dayStart;
@@ -72,6 +82,25 @@ export function ScheduleWeekGrid({ entries }: ScheduleWeekGridProps) {
 	const boundaries = useMemo(
 		() => Array.from(new Set(slots.map((slot) => slot.start))).sort((a, b) => a - b),
 		[slots],
+	);
+
+	/** Axis labels mark section starts plus every break edge and the day end, so
+	    09:40/11:50/16:00/18:10/21:35 show up. Break ends coincide with the next
+	    section start and are deduped; the tight 10-minute gaps inside a period
+	    stay unlabeled. Grid separator lines keep using `boundaries`. */
+	const axisTicks = useMemo(
+		() =>
+			Array.from(
+				new Set([
+					...slots.map((slot) => slot.start),
+					...breaks.map((span) => span.start),
+					...breaks.map((span) => span.end),
+					dayEnd,
+				]),
+			)
+				.filter((minute) => minute >= dayStart && minute <= dayEnd)
+				.sort((a, b) => a - b),
+		[slots, breaks, dayStart, dayEnd],
 	);
 
 	/** `weekday|period|section` -> distinct member names taking that slot. */
@@ -123,9 +152,9 @@ export function ScheduleWeekGrid({ entries }: ScheduleWeekGridProps) {
 						))}
 					</div>
 
-					<div className="grid grid-cols-[3.5rem_repeat(5,minmax(0,1fr))] gap-x-1">
+					<div className="relative grid grid-cols-[3.5rem_repeat(5,minmax(0,1fr))] gap-x-1">
 						<div className="relative" style={{ height: BODY_HEIGHT }}>
-							{boundaries.map((minute) => (
+							{axisTicks.map((minute) => (
 								<span
 									key={minute}
 									className="absolute right-2 -translate-y-1/2 text-xs text-muted-foreground"
@@ -168,7 +197,7 @@ export function ScheduleWeekGrid({ entries }: ScheduleWeekGridProps) {
 										return (
 											<div
 												key={`${weekday}|${slot.period}|${slot.section}`}
-												className="absolute inset-x-0.5"
+												className="absolute inset-x-0.5 z-10"
 												style={{
 													top: `${percent(slot.start)}%`,
 													height: `calc(${height}% - 2px)`,
@@ -208,6 +237,25 @@ export function ScheduleWeekGrid({ entries }: ScheduleWeekGridProps) {
 								</div>
 							);
 						})}
+
+						{/* Breaks are identical every weekday, so one band spans the five
+						    day columns. It is absolutely positioned (not a grid child) so
+						    it never displaces the columns; course blocks carry z-10 to sit
+						    above it, and its left offset clears the time-axis column. */}
+						<div className="pointer-events-none absolute inset-y-0 right-0 left-[3.75rem] z-0">
+							{breaks.map((span) => (
+								<div
+									key={`${span.label}-${span.start}`}
+									className="absolute inset-x-0 flex items-center justify-center rounded-md bg-red-500/10 text-xs font-medium text-red-700/80 ring-1 ring-inset ring-red-500/10 dark:bg-red-400/10 dark:text-red-300/80 dark:ring-red-400/10"
+									style={{
+										top: `${percent(span.start)}%`,
+										height: `calc(${percent(span.end) - percent(span.start)}% - 2px)`,
+									}}
+								>
+									{span.label}
+								</div>
+							))}
+						</div>
 					</div>
 				</div>
 			</div>
