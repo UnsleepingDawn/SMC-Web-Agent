@@ -100,6 +100,8 @@ export default function SeminarsPage() {
 						semesters={semesters}
 						defaultSemesterId={semester?.id}
 						defaultWeek={currentWeek}
+						tasks={["seminars"]}
+						defaultTask="seminars"
 						onCompleted={refetch}
 					/>
 				</CardContent>

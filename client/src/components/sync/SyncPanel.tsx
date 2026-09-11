@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { getSyncRun, startSync } from "@/lib/api";
-import { Semester, SyncRun, SyncTask } from "@/lib/schema";
+import { JobStatus, Semester, SyncRun, SyncTask } from "@/lib/schema";
 import { toast } from "sonner";
 
 const TASK_LABELS: Record<SyncTask, string> = {
@@ -28,6 +28,12 @@ const TASK_LABELS: Record<SyncTask, string> = {
 	seminar_leaves: "组会请假",
 	schedule: "课表",
 };
+
+const ALL_TASKS = Object.keys(TASK_LABELS) as SyncTask[];
+
+/** Sentinel option that submits every offered task in sequence. */
+export const SYNC_ALL = "__all__";
+type TaskChoice = SyncTask | typeof SYNC_ALL;
 
 // Tasks that operate on a single week and therefore show the week input.
 const WEEK_TASKS: SyncTask[] = [
@@ -42,14 +48,30 @@ interface SyncPanelProps {
 	defaultSemesterId?: string;
 	defaultWeek?: number | null;
 	onCompleted?: () => void;
+	/** Tasks offered in the dropdown; defaults to every task. */
+	tasks?: SyncTask[];
+	/** Task selected on first render; defaults to the first offered task. */
+	defaultTask?: TaskChoice;
+	/** Offer an "全部内容" option that submits every offered task. */
+	allowSyncAll?: boolean;
 }
 
-export function SyncPanel({ semesters, defaultSemesterId, defaultWeek, onCompleted }: SyncPanelProps) {
-	const [task, setTask] = useState<SyncTask>("members");
+export function SyncPanel({
+	semesters,
+	defaultSemesterId,
+	defaultWeek,
+	onCompleted,
+	tasks,
+	defaultTask,
+	allowSyncAll = false,
+}: SyncPanelProps) {
+	const availableTasks = tasks ?? ALL_TASKS;
+	const [task, setTask] = useState<TaskChoice>(defaultTask ?? availableTasks[0] ?? "members");
 	const [semesterId, setSemesterId] = useState(defaultSemesterId ?? "");
 	const [week, setWeek] = useState(String(defaultWeek ?? 1));
-	const [run, setRun] = useState<SyncRun | null>(null);
+	const [runs, setRuns] = useState<SyncRun[]>([]);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const notifiedRef = useRef(false);
 
 	useEffect(() => {
 		if (!semesterId && defaultSemesterId) setSemesterId(defaultSemesterId);
@@ -59,59 +81,112 @@ export function SyncPanel({ semesters, defaultSemesterId, defaultWeek, onComplet
 		if (defaultWeek) setWeek(String(defaultWeek));
 	}, [defaultWeek]);
 
-	// Poll the run while it is queued or executing.
+	// Any task in the selection needs the week input when submitted in bulk.
+	const needsWeek = task === SYNC_ALL || WEEK_TASKS.includes(task as SyncTask);
+
+	// Poll the batch while it is queued or executing.
 	useEffect(() => {
-		if (!run || run.status === "completed" || run.status === "failed") return;
+		const pending = runs.filter(
+			(item) => item.status !== "completed" && item.status !== "failed",
+		);
+		if (pending.length === 0) return;
 		const timer = setInterval(async () => {
-			try {
-				const response = await getSyncRun(run.id);
-				setRun(response.run);
-				if (response.run.status === "completed") {
-					toast.success("飞书同步已完成。");
-					onCompleted?.();
-				} else if (response.run.status === "failed") {
-					toast.error(response.run.error || "飞书同步失败。");
-					onCompleted?.();
-				}
-			} catch (error) {
-				console.error("轮询同步状态失败", error);
-			}
+			const refreshed = await Promise.all(
+				runs.map(async (item) => {
+					if (item.status === "completed" || item.status === "failed") return item;
+					try {
+						const response = await getSyncRun(item.id);
+						return response.run;
+					} catch (error) {
+						console.error("轮询同步状态失败", error);
+						return item;
+					}
+				}),
+			);
+			setRuns(refreshed);
 		}, 2000);
 		return () => clearInterval(timer);
-	}, [run, onCompleted]);
+	}, [runs]);
+
+	// Announce once the whole batch settles.
+	useEffect(() => {
+		if (runs.length === 0 || notifiedRef.current) return;
+		const settled = runs.every(
+			(item) => item.status === "completed" || item.status === "failed",
+		);
+		if (!settled) return;
+		notifiedRef.current = true;
+		const failed = runs.filter((item) => item.status === "failed");
+		if (failed.length > 0) {
+			toast.error(failed[0].error || `有 ${failed.length} 个同步任务失败。`);
+		} else {
+			toast.success("飞书同步已完成。");
+		}
+		onCompleted?.();
+	}, [runs, onCompleted]);
 
 	const submit = useCallback(async () => {
 		if (!semesterId) {
 			toast.error("请先选择学期。");
 			return;
 		}
+		const targets: SyncTask[] = task === SYNC_ALL ? availableTasks : [task];
+		const created: SyncRun[] = [];
 		setIsSubmitting(true);
 		try {
-			const response = await startSync({
-				task,
-				semester_id: semesterId,
-				week: WEEK_TASKS.includes(task) ? Number(week) : undefined,
-			});
-			setRun({
-				id: response.run_id,
-				job_id: response.job_id,
-				task_name: task,
-				semester_id: semesterId,
-				week: WEEK_TASKS.includes(task) ? Number(week) : null,
-				status: "running",
-				error: null,
-				payload: {},
-				started_at: null,
-				completed_at: null,
-				created_at: null,
-			});
-			toast.success("已提交同步任务，正在后台执行。");
+			for (const target of targets) {
+				const response = await startSync({
+					task: target,
+					semester_id: semesterId,
+					week: WEEK_TASKS.includes(target) ? Number(week) : undefined,
+				});
+				created.push({
+					id: response.run_id,
+					job_id: response.job_id,
+					task_name: target,
+					semester_id: semesterId,
+					week: WEEK_TASKS.includes(target) ? Number(week) : null,
+					status: "running",
+					error: null,
+					payload: {},
+					started_at: null,
+					completed_at: null,
+					created_at: null,
+				});
+			}
+			notifiedRef.current = false;
+			setRuns(created);
+			toast.success(
+				created.length > 1
+					? `已提交 ${created.length} 个同步任务，正在后台执行。`
+					: "已提交同步任务，正在后台执行。",
+			);
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : "提交同步任务失败。");
+			if (created.length > 0) {
+				notifiedRef.current = false;
+				setRuns([...created]);
+				toast.error(
+					`已提交 ${created.length} 个任务，后续提交失败：${error instanceof Error ? error.message : "未知错误"}`,
+				);
+			} else {
+				toast.error(error instanceof Error ? error.message : "提交同步任务失败。");
+			}
 		} finally {
 			setIsSubmitting(false);
 		}
-	}, [task, semesterId, week]);
+	}, [task, semesterId, week, availableTasks]);
+
+	const settledCount = runs.filter(
+		(item) => item.status === "completed" || item.status === "failed",
+	).length;
+	const failedRun = runs.find((item) => item.status === "failed");
+	const overallStatus: JobStatus = failedRun
+		? "failed"
+		: runs.length > 0 && settledCount === runs.length
+			? "completed"
+			: runs.some((item) => item.status === "running")
+				? "running"
+				: "pending";
 
 	return (
 		<Card>
@@ -123,12 +198,13 @@ export function SyncPanel({ semesters, defaultSemesterId, defaultWeek, onComplet
 				<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
 					<div className="space-y-2">
 						<Label>同步内容</Label>
-						<Select value={task} onValueChange={(value) => setTask(value as SyncTask)}>
+						<Select value={task} onValueChange={(value) => setTask(value as TaskChoice)}>
 							<SelectTrigger className="w-full">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								{(Object.keys(TASK_LABELS) as SyncTask[]).map((key) => (
+								{allowSyncAll ? <SelectItem value={SYNC_ALL}>全部内容</SelectItem> : null}
+								{availableTasks.map((key) => (
 									<SelectItem key={key} value={key}>
 										{TASK_LABELS[key]}
 									</SelectItem>
@@ -151,7 +227,7 @@ export function SyncPanel({ semesters, defaultSemesterId, defaultWeek, onComplet
 							</SelectContent>
 						</Select>
 					</div>
-					{WEEK_TASKS.includes(task) ? (
+					{needsWeek ? (
 						<div className="space-y-2">
 							<Label>周次</Label>
 							<Input
@@ -173,10 +249,17 @@ export function SyncPanel({ semesters, defaultSemesterId, defaultWeek, onComplet
 						)}
 						开始同步
 					</Button>
-					{run ? (
-						<div className="flex items-center gap-2 text-sm text-muted-foreground">
-							<StatusBadge status={run.status} />
-							{run.error ? <span className="text-destructive">{run.error}</span> : null}
+					{runs.length > 0 ? (
+						<div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+							<StatusBadge status={overallStatus} />
+							{runs.length > 1 ? (
+								<span>
+									已完成 {settledCount}/{runs.length}
+								</span>
+							) : null}
+							{failedRun?.error ? (
+								<span className="text-destructive">{failedRun.error}</span>
+							) : null}
 						</div>
 					) : null}
 				</div>

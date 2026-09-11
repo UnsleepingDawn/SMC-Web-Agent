@@ -79,6 +79,8 @@ export default function MembersPage() {
 				semesters={semesters}
 				defaultSemesterId={semester?.id}
 				defaultWeek={currentWeek}
+				tasks={["members"]}
+				defaultTask="members"
 				onCompleted={() => {
 					refetch();
 				}}

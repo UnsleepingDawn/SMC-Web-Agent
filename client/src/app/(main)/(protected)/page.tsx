@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { SemesterOverview } from "@/components/dashboard/SemesterOverview";
 import { SeminarOverview } from "@/components/dashboard/SeminarOverview";
 import { WeeklyReportOverview } from "@/components/dashboard/WeeklyReportOverview";
-import { SyncPanel } from "@/components/sync/SyncPanel";
+import { SyncPanel, SYNC_ALL } from "@/components/sync/SyncPanel";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useSemesters } from "@/hooks/useSemesters";
 
@@ -62,6 +62,8 @@ export default function DashboardPage() {
 						semesters={semesters}
 						defaultSemesterId={semester.id}
 						defaultWeek={currentWeek}
+						allowSyncAll
+						defaultTask={SYNC_ALL}
 						onCompleted={refreshAll}
 					/>
 				</div>

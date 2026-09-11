@@ -183,6 +183,14 @@ export default function AttendancePage() {
 				semesters={semesters}
 				defaultSemesterId={semester.id}
 				defaultWeek={currentWeek}
+				tasks={[
+					"attendance_group",
+					"daily_attendance",
+					"seminar_attendance",
+					"seminar_leaves",
+					"schedule",
+				]}
+				defaultTask="daily_attendance"
 				onCompleted={refetch}
 			/>
 

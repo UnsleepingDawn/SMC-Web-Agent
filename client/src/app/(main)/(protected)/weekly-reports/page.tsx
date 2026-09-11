@@ -11,7 +11,9 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { MessagePreview } from "@/components/common/MessagePreview";
 import { PageHeader } from "@/components/common/PageHeader";
 import { RecipientPicker } from "@/components/common/RecipientPicker";
+import { SyncPanel } from "@/components/sync/SyncPanel";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
+import { useSemesters } from "@/hooks/useSemesters";
 import { useWeeklyReports } from "@/hooks/useWeeklyReports";
 import { previewWeeklySummary, pushWeeklySummary, remindMissingReports } from "@/lib/api";
 import { PostMessage, Recipient } from "@/lib/schema";
@@ -19,9 +21,10 @@ import { toast } from "sonner";
 
 export default function WeeklyReportsPage() {
 	const { semester, currentWeek } = useCurrentSemester();
+	const { semesters } = useSemesters();
 	const [week, setWeek] = useState<number | null>(null);
 	const activeWeek = week ?? currentWeek ?? 0;
-	const { stats, isLoading, error } = useWeeklyReports(activeWeek, semester?.id);
+	const { stats, isLoading, error, refetch } = useWeeklyReports(activeWeek, semester?.id);
 
 	const [recipient, setRecipient] = useState<Recipient | null>(null);
 	const [preview, setPreview] = useState<PostMessage | null>(null);
@@ -169,6 +172,15 @@ export default function WeeklyReportsPage() {
 					</CardContent>
 				</Card>
 			) : null}
+
+			<SyncPanel
+				semesters={semesters}
+				defaultSemesterId={semester.id}
+				defaultWeek={currentWeek}
+				tasks={["weekly_reports"]}
+				defaultTask="weekly_reports"
+				onCompleted={refetch}
+			/>
 
 			<Card>
 				<CardHeader>
