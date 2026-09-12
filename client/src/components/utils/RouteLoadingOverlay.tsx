@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { subscribePendingRequests } from "@/lib/api";
+import { useSidebar } from "@/components/ui/sidebar";
 
 /** Minimum time the overlay stays visible, to avoid a distracting flicker. */
 const MIN_VISIBLE_MS = 300;
@@ -37,6 +38,7 @@ function isInternalNavigation(event: MouseEvent): boolean {
 /** Full-screen overlay shown while a route is switching and its data is loading. */
 export function RouteLoadingOverlay() {
 	const pathname = usePathname();
+	const { isMobile, state } = useSidebar();
 	const [visible, setVisible] = useState(false);
 
 	const visibleRef = useRef(false);
@@ -112,8 +114,18 @@ export function RouteLoadingOverlay() {
 
 	if (!visible) return null;
 
+	// Keep the overlay clear of the desktop sidebar so only the content area is
+	// dimmed. On mobile the sidebar is an overlay sheet, so cover the full width.
+	const leftOffset = isMobile
+		? "left-0"
+		: state === "collapsed"
+			? "left-[var(--sidebar-width-icon)]"
+			: "left-[var(--sidebar-width)]";
+
 	return (
-		<div className="animate-in fade-in fixed inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm duration-150">
+		<div
+			className={`animate-in fade-in fixed top-0 right-0 bottom-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm duration-150 ${leftOffset}`}
+		>
 			<div className="flex flex-col items-center gap-3">
 				<Loader2 className="h-8 w-8 animate-spin text-primary" />
 				<span className="text-sm text-muted-foreground">加载中…</span>
