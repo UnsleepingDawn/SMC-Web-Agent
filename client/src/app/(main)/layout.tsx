@@ -10,6 +10,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/lib/providers";
 import { SidebarController } from "@/components/utils/SidebarAutoCollapse";
 import { MobileSidebarTrigger } from "@/components/utils/MobileSidebarTrigger";
+import { RouteLoadingOverlay } from "@/components/utils/RouteLoadingOverlay";
 
 const geistSans = localFont({
 	variable: "--font-geist-sans",
@@ -72,6 +73,7 @@ export default async function RootLayout({
 									{children}
 								</SidebarController>
 							</SidebarInset>
+							<RouteLoadingOverlay />
 						</SidebarProvider>
 					</AuthProvider>
 				</ThemeProvider>

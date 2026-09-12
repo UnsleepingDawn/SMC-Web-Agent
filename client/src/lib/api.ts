@@ -22,7 +22,40 @@ import type {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
-export async function fetchFromApi(endpoint: string, options: RequestInit = {}) {
+/* ------------------------------------------------ pending request tracking */
+
+type PendingRequestsListener = (count: number) => void;
+
+const pendingRequestsListeners = new Set<PendingRequestsListener>();
+let pendingRequestsCount = 0;
+
+function emitPendingRequests() {
+    pendingRequestsListeners.forEach((listener) => listener(pendingRequestsCount));
+}
+
+/** Subscribes to the number of in-flight API requests (used by the route loading overlay). */
+export function subscribePendingRequests(listener: PendingRequestsListener): () => void {
+    pendingRequestsListeners.add(listener);
+    listener(pendingRequestsCount);
+    return () => {
+        pendingRequestsListeners.delete(listener);
+    };
+}
+
+function trackRequest<T>(promise: Promise<T>): Promise<T> {
+    pendingRequestsCount += 1;
+    emitPendingRequests();
+    return promise.finally(() => {
+        pendingRequestsCount -= 1;
+        emitPendingRequests();
+    });
+}
+
+export function fetchFromApi(endpoint: string, options: RequestInit = {}) {
+    return trackRequest(fetchFromApiInner(endpoint, options));
+}
+
+async function fetchFromApiInner(endpoint: string, options: RequestInit = {}) {
     const headers: HeadersInit = {};
 
     // Only set Content-Type to application/json if we're not sending FormData
