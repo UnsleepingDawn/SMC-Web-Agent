@@ -3,6 +3,7 @@
 import { Loader2 } from "lucide-react";
 import { Suspense } from "react";
 import { useAuth } from "@/lib/auth";
+import { AvatarSection } from "@/components/settings/AvatarSection";
 import { ProfileSection } from "@/components/settings/ProfileSection";
 import { PasswordSection } from "@/components/settings/PasswordSection";
 import { SemesterSection } from "@/components/settings/SemesterSection";
@@ -27,6 +28,7 @@ function SettingsContent() {
 					管理你的账号、学期参数与飞书应用凭据。
 				</p>
 			</div>
+			<AvatarSection />
 			<ProfileSection />
 			<PasswordSection />
 			<SemesterSection />

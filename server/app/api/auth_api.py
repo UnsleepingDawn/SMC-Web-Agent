@@ -1,6 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict, deque
+from io import BytesIO
 from threading import Lock
 from time import monotonic
 from typing import Deque, Optional
@@ -16,8 +17,17 @@ from app.auth.utils import clear_session_cookie, set_session_cookie
 from app.database.crud.user_crud import user as user_crud
 from app.database.database import get_db
 from app.database.models import User
+from app.helpers.s3 import s3_service
 from app.schemas.user import CurrentUser, UserUpdate
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -30,6 +40,13 @@ _LOGIN_FAILURE_WINDOW_SECONDS = 10 * 60
 _LOGIN_FAILURE_LIMIT = 5
 _login_failures: dict[str, Deque[float]] = defaultdict(deque)
 _login_failure_lock = Lock()
+
+_AVATAR_MAX_BYTES = 5 * 1024 * 1024
+_AVATAR_CONTENT_TYPE_EXTENSIONS = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+}
 
 
 class AuthResponse(BaseModel):
@@ -222,6 +239,78 @@ async def update_profile(
         success=True,
         message="Profile updated successfully",
         user=updated_current_user,
+    )
+
+
+@auth_router.post("/avatar", response_model=AuthResponse)
+async def upload_avatar(
+    file: UploadFile,
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    """Store a new avatar image for the current user."""
+    content_type = (file.content_type or "").lower()
+    extension = _AVATAR_CONTENT_TYPE_EXTENSIONS.get(content_type)
+    if extension is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported image format. Use PNG, JPEG, or WebP.",
+        )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded image is empty.",
+        )
+    if len(content) > _AVATAR_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="The image is too large. The maximum size is 5 MB.",
+        )
+
+    db_user = user_crud.get(db=db, id=current_user.id)
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # A unique key per upload keeps the public URL changing so browsers never
+    # serve a cached copy of the previous avatar.
+    object_key = f"avatars/{current_user.id}/{uuid.uuid4().hex}.{extension}"
+    _, avatar_url = s3_service.upload_bytes(BytesIO(content), object_key, content_type)
+
+    user_crud.update(db=db, db_obj=db_user, obj_in=UserUpdate(avatar_url=avatar_url))
+    db.refresh(db_user)
+
+    return AuthResponse(
+        success=True,
+        message="Avatar updated successfully",
+        user=_current_user_from_db(db_user),
+    )
+
+
+@auth_router.delete("/avatar", response_model=AuthResponse)
+async def delete_avatar(
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    """Remove the current user's avatar."""
+    db_user = user_crud.get(db=db, id=current_user.id)
+    if not db_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    user_crud.update(db=db, db_obj=db_user, obj_in=UserUpdate(avatar_url=None))
+    db.refresh(db_user)
+
+    return AuthResponse(
+        success=True,
+        message="Avatar removed successfully",
+        user=_current_user_from_db(db_user),
     )
 
 

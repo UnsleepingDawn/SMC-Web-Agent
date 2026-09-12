@@ -3011,6 +3011,11 @@ postcss@8.4.31, postcss@^8.5.10, postcss@^8.5.16, postcss@^8.5.18:
     picocolors "^1.1.1"
     source-map-js "^1.2.1"
 
+normalize-wheel@^1.0.1:
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/normalize-wheel/-/normalize-wheel-1.0.1.tgz#aec886affdb045070d856447df62ecf86146ec45"
+  integrity sha512-1OnlAPZ3zgrk8B91HyRj+eVv+kS5u+Z0SCsak6Xil/kmgEia50ga7zfkumayonZrImffAxPU/5WcyGhzetHNPA==
+
 prelude-ls@^1.2.1:
   version "1.2.1"
   resolved "https://registry.yarnpkg.com/prelude-ls/-/prelude-ls-1.2.1.tgz#debc6489d7a6e6b0e7611888cec880337d316396"
@@ -3041,6 +3046,13 @@ react-dom@^19.0.0:
   integrity sha512-rVprimfGBG3DR+Tq0IQG2DT5PxKth1WIGDmj5yPmlzr4YBe7uyE+Du4oVqTDXZSHGGGXRtTJEGSSePyQCMBglQ==
   dependencies:
     scheduler "^0.27.0"
+
+react-easy-crop@^6.2.3:
+  version "6.2.3"
+  resolved "https://registry.yarnpkg.com/react-easy-crop/-/react-easy-crop-6.2.3.tgz#5b5fb04bab2b15fc51c502611184d05f278296d0"
+  integrity sha512-ebimG3OGlzizjxEZ77Cj9CVLcg5vDZ6QVz8ud1rx4WmsCDWHIROEhgMi0GpJ/jKAuwHrH0M+QZUK4hyvxbYhOA==
+  dependencies:
+    normalize-wheel "^1.0.1"
 
 react-hook-form@^7.62.0:
   version "7.87.0"

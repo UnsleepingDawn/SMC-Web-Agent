@@ -83,6 +83,19 @@ export async function changePassword(
     });
 }
 
+export function uploadAvatar(file: Blob): Promise<{ success: boolean; message: string }> {
+    const formData = new FormData();
+    formData.append('file', file, 'avatar.jpg');
+    return fetchFromApi('/api/auth/avatar', {
+        method: 'POST',
+        body: formData,
+    });
+}
+
+export function deleteAvatar(): Promise<{ success: boolean; message: string }> {
+    return fetchFromApi('/api/auth/avatar', { method: 'DELETE' });
+}
+
 /* ---------------------------------------------------------------- semesters */
 
 export function getSemesters(): Promise<{ semesters: Semester[] }> {

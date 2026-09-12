@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     name: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 
 # Current user returned to protected routes and the client.
