@@ -8,10 +8,14 @@ date form one occurrence, ordered by the ``顺序`` track column.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
+from zoneinfo import ZoneInfo
 
 from src.seminar_calendar import week_and_weekday
+
+# Feishu date fields carry the day's midnight in Beijing time (UTC+8).
+SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +53,7 @@ def _to_date(value: Any) -> Optional[date]:
     if isinstance(value, (int, float)):
         if value <= 0:
             return None
-        return datetime.fromtimestamp(value / 1000, tz=timezone.utc).date()
+        return datetime.fromtimestamp(value / 1000, tz=SHANGHAI).date()
     if isinstance(value, str):
         text = value.strip()
         if not text:
