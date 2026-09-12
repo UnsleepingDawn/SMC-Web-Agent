@@ -20,6 +20,7 @@ import { useSemesters } from "@/hooks/useSemesters";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { deleteSemester } from "@/lib/api";
 import { Semester, WEEKDAY_NAMES } from "@/lib/schema";
+import { formatHhmm } from "@/lib/utils";
 import { toast } from "sonner";
 
 export function SemesterSection() {
@@ -93,9 +94,10 @@ export function SemesterSection() {
 									) : null}
 								</div>
 								<p className="text-xs text-muted-foreground">
-									起始 {item.start_date} · 默认{" "}
-									{WEEKDAY_NAMES[item.default_seminar_weekday - 1] ?? ""}{" "}
-									{item.default_seminar_start_time}-{item.default_seminar_end_time}
+								起始 {item.start_date} · 默认{" "}
+								{WEEKDAY_NAMES[item.default_seminar_weekday - 1] ?? ""}{" "}
+								{formatHhmm(item.default_seminar_start_time)}-
+								{formatHhmm(item.default_seminar_end_time)}
 								</p>
 							</div>
 							<div className="flex items-center gap-2">

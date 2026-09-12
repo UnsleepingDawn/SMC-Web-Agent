@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Semester, WEEKDAY_NAMES } from "@/lib/schema";
+import { formatHhmm } from "@/lib/utils";
 
 interface SemesterOverviewProps {
 	semester: Semester;
@@ -37,7 +38,8 @@ export function SemesterOverview({ semester, currentWeek }: SemesterOverviewProp
 						<dt className="text-xs text-muted-foreground">默认组会时间</dt>
 						<dd>
 							{WEEKDAY_NAMES[semester.default_seminar_weekday - 1] ?? "—"}{" "}
-							{semester.default_seminar_start_time}-{semester.default_seminar_end_time}
+							{formatHhmm(semester.default_seminar_start_time)}-
+							{formatHhmm(semester.default_seminar_end_time)}
 						</dd>
 					</div>
 				</dl>

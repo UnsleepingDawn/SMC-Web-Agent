@@ -5,6 +5,18 @@ export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs))
 }
 
+/** Render an "HHMM" time value (as stored on a semester) as "HH:MM"; "" when it is not a valid time. */
+export function formatHhmm(value: string | null | undefined): string {
+	if (!value) return "";
+	const digits = String(value).trim().replace(/：/g, ":").replace(/:/g, "");
+	if (!/^\d{3,4}$/.test(digits)) return "";
+	const padded = digits.padStart(4, "0");
+	const hours = Number(padded.slice(0, 2));
+	const minutes = Number(padded.slice(2));
+	if (hours > 23 || minutes > 59) return "";
+	return `${padded.slice(0, 2)}:${padded.slice(2)}`;
+}
+
 export function groupConsecutiveNumbers(numbers: number[]): string {
 	if (numbers.length === 0) return "";
 

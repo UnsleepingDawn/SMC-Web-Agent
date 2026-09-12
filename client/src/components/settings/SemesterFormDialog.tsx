@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { createSemester, updateSemester } from "@/lib/api";
 import { Semester, WEEKDAY_NAMES } from "@/lib/schema";
-import { cn } from "@/lib/utils";
+import { cn, formatHhmm } from "@/lib/utils";
 import { toast } from "sonner";
 
 const ITEM_HEIGHT = 32;
@@ -63,12 +63,6 @@ function parseTimeInput(raw: string): string | null {
 	}
 	if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
 	return `${String(hours).padStart(2, "0")}${String(minutes).padStart(2, "0")}`;
-}
-
-function hhmmToDisplay(value: string): string {
-	const parsed = parseTimeInput(value);
-	if (!parsed) return "";
-	return `${parsed.slice(0, 2)}:${parsed.slice(2)}`;
 }
 
 function digitsToDisplay(digits: string): string {
@@ -272,7 +266,7 @@ function TimeWheelPicker({ id, value, onChange, disabled }: TimeWheelPickerProps
 				<Input
 					ref={inputRef}
 					id={id}
-					value={focused ? digitsToDisplay(text) : hhmmToDisplay(value)}
+					value={focused ? digitsToDisplay(text) : formatHhmm(value)}
 					placeholder="19:00"
 					inputMode="numeric"
 					autoComplete="off"
