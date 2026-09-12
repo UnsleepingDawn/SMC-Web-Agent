@@ -20,7 +20,7 @@ from app.database.crud.sync_crud import (
 )
 from app.database.database import get_db
 from app.helpers.feishu_jobs import feishu_jobs
-from app.helpers.semester_calendar import shift_hhmm, week_date, week_period
+from app.helpers.semester_calendar import week_date, week_period
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -236,11 +236,11 @@ def start_sync(
         seminar_date = week_date(db_semester.start_date, payload.week, weekday)
         check_from = _timestamp_seconds(
             seminar_date,
-            shift_hhmm(db_semester.default_seminar_start_time, -60),
+            db_semester.default_seminar_start_time,
         )
         check_to = _timestamp_seconds(
             seminar_date,
-            shift_hhmm(db_semester.default_seminar_end_time, 60),
+            db_semester.default_seminar_end_time,
         )
         job_id = feishu_jobs.sync_seminar_attendance(
             run_id=run.id,
