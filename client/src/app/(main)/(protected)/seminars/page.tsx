@@ -25,19 +25,22 @@ export default function SeminarsPage() {
 	const { semesters } = useSemesters();
 	const { seminars, isLoading, error, refetch } = useSeminars(semester?.id);
 	const [editing, setEditing] = useState<Seminar | null>(null);
-	const [weekFilter, setWeekFilter] = useState("__all__");
+	const [weekFilter, setWeekFilter] = useState<string | null>(null);
+	const activeWeekFilter =
+		weekFilter ?? (currentWeek !== null ? String(currentWeek) : "__all__");
 
-	const weeks = useMemo(
-		() => Array.from(new Set(seminars.map((item) => item.week))).sort((a, b) => a - b),
-		[seminars],
-	);
+	const weeks = useMemo(() => {
+		const values = new Set(seminars.map((item) => item.week));
+		if (currentWeek !== null) values.add(currentWeek);
+		return Array.from(values).sort((a, b) => a - b);
+	}, [seminars, currentWeek]);
 
 	const visible = useMemo(
 		() =>
-			weekFilter === "__all__"
+			activeWeekFilter === "__all__"
 				? seminars
-				: seminars.filter((item) => String(item.week) === weekFilter),
-		[seminars, weekFilter],
+				: seminars.filter((item) => String(item.week) === activeWeekFilter),
+		[seminars, activeWeekFilter],
 	);
 
 	return (
@@ -47,7 +50,7 @@ export default function SeminarsPage() {
 				description="按周次查看与编辑报告安排，渲染并推送飞书预告。"
 				actions={
 					<div className="w-40">
-						<Select value={weekFilter} onValueChange={setWeekFilter}>
+						<Select value={activeWeekFilter} onValueChange={setWeekFilter}>
 							<SelectTrigger>
 								<SelectValue placeholder="全部周次" />
 							</SelectTrigger>
@@ -74,8 +77,16 @@ export default function SeminarsPage() {
 				</div>
 			) : visible.length === 0 ? (
 				<EmptyState
-					title="还没有组会安排"
-					description="先同步飞书组会表，或在下方提交一次「组会安排」同步任务。"
+					title={
+						activeWeekFilter === "__all__"
+							? "还没有组会安排"
+							: `第 ${activeWeekFilter} 周暂无组会安排`
+					}
+					description={
+						activeWeekFilter === "__all__"
+							? "先同步飞书组会表，或在下方提交一次「组会安排」同步任务。"
+							: "可切换其他周次查看，或先在下方提交一次「组会安排」同步任务。"
+					}
 				/>
 			) : (
 				<div className="space-y-6">
