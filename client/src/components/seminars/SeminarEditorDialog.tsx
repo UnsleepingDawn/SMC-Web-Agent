@@ -96,7 +96,7 @@ export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: Se
 				<DialogHeader>
 					<DialogTitle>编辑组会</DialogTitle>
 					<DialogDescription>
-						{seminar ? `第 ${seminar.week} 周 · Track 沿用组会表的「顺序」值` : ""}
+						{seminar ? `第 ${seminar.week} 周 · Track 沿用组会表的「_Track」值` : ""}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -142,7 +142,7 @@ export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: Se
 							onClick={() =>
 								setPresentations((prev) => [
 									...prev,
-									// Track 沿用组会表的「顺序」值，可能跳号，所以取最大值递增
+									// Track 沿用组会表的「_Track」值，可能跳号，所以取最大值递增
 									// 而不是用长度，避免撞上已有编号。
 									emptyPresentation(
 										prev.reduce((max, item) => Math.max(max, item.track), 0) + 1,

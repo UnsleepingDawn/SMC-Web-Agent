@@ -2,8 +2,8 @@
 
 Port of ``SMCLabSeminarManager``: the table has one row per person, with the
 date they last presented and the date they are expected next. Rows sharing a
-date form one occurrence, whose talks keep the ``顺序`` value they carry in the
-table.
+date form one occurrence, whose talks keep the ``_Track`` value they carry in
+the table.
 """
 
 from __future__ import annotations
@@ -26,7 +26,10 @@ FIELD_LAST_DATE = "上次讲组会时间"
 FIELD_NEXT_DATE = "近期预期"
 FIELD_CONFIRMED = "是否确认"
 FIELD_ROOM = "_会议室"
-FIELD_TRACK = "顺序"
+# The bitable's own track column, named with a leading underscore like the other
+# computed columns. Reading the plain "顺序" column returns nothing at all, which
+# silently collapsed every seminar to Track 1.
+FIELD_TRACK = "_Track"
 FIELD_TITLE = "分享主题"
 FIELD_ABSTRACT = "摘要"
 FIELD_OFFLINE_ADVISOR = "线下指导老师"
@@ -78,10 +81,11 @@ def _to_date(value: Any) -> Optional[date]:
 
 
 def _to_track(value: Any) -> Optional[int]:
-    """Read ``顺序`` as a positive integer, or ``None`` when it is unusable.
+    """Read ``_Track`` as a positive integer, or ``None`` when it is unusable.
 
-    The column may be a number or a rich-text cell, so pull the first digits out
-    of its flattened text instead of casting the raw value.
+    The column is a computed one, so it may arrive as a number or as the usual
+    list of ``{"text"}`` segments; pull the first digits out of its flattened
+    text instead of casting the raw value.
     """
     match = re.search(r"\d+", _as_text(value))
     if not match:
@@ -103,8 +107,8 @@ def build_seminars(
     semester. Rows are merged on ``(week, weekday, happened)`` with the incoming
     row winning, matching the original merge semantics.
 
-    Talks keep the ``顺序`` value the table carries, so a lone presenter with
-    ``顺序 = 3`` is still Track 3. Only a missing or duplicated value is
+    Talks keep the ``_Track`` value the table carries, so a lone presenter with
+    ``_Track = 3`` is still Track 3. Only a missing or duplicated value is
     renumbered, into the first free positive integer.
     """
     grouped: Dict[tuple[int, int, bool], Dict[str, Any]] = {}
@@ -157,6 +161,19 @@ def build_seminars(
             )
 
     seminars: List[Dict[str, Any]] = []
+    if grouped and all(
+        presentation["track"] is None
+        for occurrence in grouped.values()
+        for presentation in occurrence["presentations"]
+    ):
+        # Every row lacking a track value almost always means the column name no
+        # longer matches the bitable; without this the whole table quietly turns
+        # into Track 1..N again.
+        logger.warning(
+            "No seminar row carried a %s value; check the bitable column name",
+            FIELD_TRACK,
+        )
+
     for occurrence in grouped.values():
         # Rows for one occurrence arrive in table order, which is not track
         # order, so sort first and only then fill the gaps. A duplicate has to
@@ -174,7 +191,7 @@ def build_seminars(
                 while replacement in used:
                     replacement += 1
                 logger.warning(
-                    "Week %s has a %s 顺序; using Track %s instead",
+                    "Week %s has a %s _Track; using Track %s instead",
                     occurrence["week"],
                     "missing" if track is None else f"duplicate {track}",
                     replacement,
