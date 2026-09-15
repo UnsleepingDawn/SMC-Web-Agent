@@ -66,6 +66,7 @@ export function SeminarCard({ seminar, onEdit, onChanged }: SeminarCardProps) {
 						</CardTitle>
 						<CardDescription>
 							{seminar.room || "地点待定"}
+							{seminar.offline_advisor ? ` · 线下指导老师：${seminar.offline_advisor}` : ""}
 							{seminar.happened ? " · 已举行" : ""}
 						</CardDescription>
 					</div>

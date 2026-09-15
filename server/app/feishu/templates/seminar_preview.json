@@ -25,6 +25,10 @@
         { "tag": "text", "text": "xxxxxx" }
       ],
       [
+        { "tag": "text", "text": "线下指导老师: " },
+        { "tag": "text", "text": "xxxxxx" }
+      ],
+      [
         { "tag": "text", "text": "线上链接: \n" },
         { "tag": "text", "text": "xxxxxx" }
       ]

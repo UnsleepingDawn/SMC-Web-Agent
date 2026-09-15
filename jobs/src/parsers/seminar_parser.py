@@ -2,12 +2,14 @@
 
 Port of ``SMCLabSeminarManager``: the table has one row per person, with the
 date they last presented and the date they are expected next. Rows sharing a
-date form one occurrence, ordered by the ``顺序`` track column.
+date form one occurrence, whose talks keep the ``顺序`` value they carry in the
+table.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
@@ -27,23 +29,31 @@ FIELD_ROOM = "_会议室"
 FIELD_TRACK = "顺序"
 FIELD_TITLE = "分享主题"
 FIELD_ABSTRACT = "摘要"
+FIELD_OFFLINE_ADVISOR = "线下指导老师"
 
 
-def _text(fields: Dict[str, Any], name: str) -> str:
-    value = fields.get(name)
+def _as_text(value: Any) -> str:
+    """Flatten a Feishu cell to plain text.
+
+    Text fields come back as strings, rich-text fields as a list of ``{"text"}``
+    segments, and reference fields as ``{"text"}``/``{"name"}`` objects.
+    """
     if value is None:
         return ""
     if isinstance(value, str):
         return value.strip()
     if isinstance(value, list):
-        parts = []
-        for chunk in value:
-            if isinstance(chunk, dict) and chunk.get("text"):
-                parts.append(str(chunk["text"]).strip())
-            elif chunk:
-                parts.append(str(chunk).strip())
-        return " ".join(parts)
+        return " ".join(part for part in (_as_text(item) for item in value) if part)
+    if isinstance(value, dict):
+        for key in ("text", "name", "value"):
+            if key in value:
+                return _as_text(value[key])
+        return ""
     return str(value).strip()
+
+
+def _text(fields: Dict[str, Any], name: str) -> str:
+    return _as_text(fields.get(name))
 
 
 def _to_date(value: Any) -> Optional[date]:
@@ -67,11 +77,17 @@ def _to_date(value: Any) -> Optional[date]:
     return None
 
 
-def _to_track(value: Any) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 1
+def _to_track(value: Any) -> Optional[int]:
+    """Read ``顺序`` as a positive integer, or ``None`` when it is unusable.
+
+    The column may be a number or a rich-text cell, so pull the first digits out
+    of its flattened text instead of casting the raw value.
+    """
+    match = re.search(r"\d+", _as_text(value))
+    if not match:
+        return None
+    track = int(match.group())
+    return track if track > 0 else None
 
 
 def build_seminars(
@@ -86,6 +102,10 @@ def build_seminars(
     "expected next" date a ``happened=False`` one; both must fall inside the
     semester. Rows are merged on ``(week, weekday, happened)`` with the incoming
     row winning, matching the original merge semantics.
+
+    Talks keep the ``顺序`` value the table carries, so a lone presenter with
+    ``顺序 = 3`` is still Track 3. Only a missing or duplicated value is
+    renumbered, into the first free positive integer.
     """
     grouped: Dict[tuple[int, int, bool], Dict[str, Any]] = {}
 
@@ -112,13 +132,20 @@ def build_seminars(
                     "weekday": weekday,
                     "happened": happened,
                     "room": "",
+                    "offline_advisor": "",
                     "presentations": [],
                 },
             )
 
-            room = _text(fields, FIELD_ROOM)
-            if room and not occurrence["room"]:
-                occurrence["room"] = room
+            # Occurrence-level fields take the first non-empty value seen, the
+            # same rule the original merge used for the meeting room.
+            for field_name, key in (
+                (FIELD_ROOM, "room"),
+                (FIELD_OFFLINE_ADVISOR, "offline_advisor"),
+            ):
+                value = _text(fields, field_name)
+                if value and not occurrence[key]:
+                    occurrence[key] = value
 
             occurrence["presentations"].append(
                 {
@@ -132,12 +159,29 @@ def build_seminars(
     seminars: List[Dict[str, Any]] = []
     for occurrence in grouped.values():
         # Rows for one occurrence arrive in table order, which is not track
-        # order; renumber densely so the preview always prints Track 1..N.
+        # order, so sort first and only then fill the gaps. A duplicate has to
+        # move: ``seminar_presentations`` is unique on ``(seminar_id, track)``
+        # and would otherwise reject the whole sync.
         presentations = sorted(
-            occurrence["presentations"], key=lambda item: item["track"]
+            occurrence["presentations"],
+            key=lambda item: (item["track"] is None, item["track"] or 0),
         )
-        for index, presentation in enumerate(presentations, start=1):
-            presentation["track"] = index
+        used: set[int] = set()
+        for presentation in presentations:
+            track = presentation["track"]
+            if track is None or track in used:
+                replacement = 1
+                while replacement in used:
+                    replacement += 1
+                logger.warning(
+                    "Week %s has a %s 顺序; using Track %s instead",
+                    occurrence["week"],
+                    "missing" if track is None else f"duplicate {track}",
+                    replacement,
+                )
+                presentation["track"] = replacement
+            used.add(presentation["track"])
+        presentations.sort(key=lambda item: item["track"])
         occurrence["presentations"] = presentations
         seminars.append(occurrence)
 

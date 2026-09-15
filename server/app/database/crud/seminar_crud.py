@@ -22,6 +22,7 @@ class SeminarCreate(BaseModel):
     weekday: int
     happened: bool = False
     room: Optional[str] = None
+    offline_advisor: Optional[str] = None
 
 
 class SeminarUpdate(BaseModel):
@@ -29,6 +30,7 @@ class SeminarUpdate(BaseModel):
     weekday: Optional[int] = None
     happened: Optional[bool] = None
     room: Optional[str] = None
+    offline_advisor: Optional[str] = None
 
 
 class CRUDSeminar(CRUDBase[Seminar, SeminarCreate, SeminarUpdate]):
@@ -64,7 +66,7 @@ class CRUDSeminar(CRUDBase[Seminar, SeminarCreate, SeminarUpdate]):
     def replace_presentations(
         self, db: Session, *, seminar: Seminar, presentations: List[PresentationInput]
     ) -> Seminar:
-        """Rewrite a seminar's talks in one transaction, keeping track order dense."""
+        """Rewrite a seminar's talks in one transaction, ordered by their track."""
         db.query(SeminarPresentation).filter(
             SeminarPresentation.seminar_id == seminar.id
         ).delete(synchronize_session=False)

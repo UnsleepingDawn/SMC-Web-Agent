@@ -99,6 +99,7 @@ export interface Seminar {
 	weekday: number;
 	happened: boolean;
 	room: string | null;
+	offline_advisor: string | null;
 	presentations: SeminarPresentation[];
 }
 

@@ -91,7 +91,7 @@ sequenceDiagram
 - `users` / `sessions` — 本地账号与登录会话。
 - `semesters` — 学期主配置：起始日期、默认组会参数、四张多维表的 token。
 - `members` — 人员主数据（通讯录与组会表合并结果）。
-- `seminars` / `seminar_presentations` — 组会发生与讲者（Track 连续编号）。
+- `seminars` / `seminar_presentations` — 组会发生与讲者（Track 沿用组会表「顺序」值，允许跳号；场次还带线下地点与线下指导老师）。
 - `seminar_leaves` / `schedule_entries` — 请假与课表（考勤模块预留）。
 - `weekly_reports` — 每周周报提交记录。
 - `attendance_groups` / `attendance_group_members` — 考勤组（预留）。

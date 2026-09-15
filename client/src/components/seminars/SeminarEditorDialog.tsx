@@ -31,6 +31,7 @@ interface SeminarEditorDialogProps {
 
 export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: SeminarEditorDialogProps) {
 	const [room, setRoom] = useState("");
+	const [offlineAdvisor, setOfflineAdvisor] = useState("");
 	const [happened, setHappened] = useState(false);
 	const [presentations, setPresentations] = useState<SeminarPresentation[]>([]);
 	const [isSaving, setIsSaving] = useState(false);
@@ -38,6 +39,7 @@ export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: Se
 	useEffect(() => {
 		if (!seminar) return;
 		setRoom(seminar.room ?? "");
+		setOfflineAdvisor(seminar.offline_advisor ?? "");
 		setHappened(seminar.happened);
 		setPresentations(
 			seminar.presentations.length > 0
@@ -65,7 +67,11 @@ export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: Se
 		}
 		setIsSaving(true);
 		try {
-			await updateSeminar(seminar.id, { room: room || null, happened });
+			await updateSeminar(seminar.id, {
+				room: room || null,
+				offline_advisor: offlineAdvisor || null,
+				happened,
+			});
 			await updatePresentations(
 				seminar.id,
 				presentations.map((item) => ({
@@ -90,7 +96,7 @@ export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: Se
 				<DialogHeader>
 					<DialogTitle>编辑组会</DialogTitle>
 					<DialogDescription>
-						{seminar ? `第 ${seminar.week} 周 · Track 按顺序编号` : ""}
+						{seminar ? `第 ${seminar.week} 周 · Track 沿用组会表的「顺序」值` : ""}
 					</DialogDescription>
 				</DialogHeader>
 
@@ -102,6 +108,16 @@ export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: Se
 							value={room}
 							onChange={(event) => setRoom(event.target.value)}
 							placeholder="如：实验楼 302"
+							disabled={isSaving}
+						/>
+					</div>
+					<div className="space-y-2">
+						<Label htmlFor="offline_advisor">线下指导老师</Label>
+						<Input
+							id="offline_advisor"
+							value={offlineAdvisor}
+							onChange={(event) => setOfflineAdvisor(event.target.value)}
+							placeholder="如：王老师"
 							disabled={isSaving}
 						/>
 					</div>
@@ -126,7 +142,11 @@ export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: Se
 							onClick={() =>
 								setPresentations((prev) => [
 									...prev,
-									emptyPresentation(prev.length + 1),
+									// Track 沿用组会表的「顺序」值，可能跳号，所以取最大值递增
+									// 而不是用长度，避免撞上已有编号。
+									emptyPresentation(
+										prev.reduce((max, item) => Math.max(max, item.track), 0) + 1,
+									),
 								])
 							}
 						>

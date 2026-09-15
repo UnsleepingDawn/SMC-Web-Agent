@@ -25,14 +25,15 @@ class TemplateError(ValueError):
 
 
 def _presentations(seminar: Seminar) -> List[Dict[str, Any]]:
+    """The talks in track order, validated before they reach the template.
+
+    Track numbers are whatever the seminar table holds, so they may start above
+    1; only their order matters here.
+    """
     talks = sorted(seminar.presentations, key=lambda item: item.track)
     if not talks:
         raise TemplateError("该周组会还没有安排报告人，无法生成预告")
-    for expected, talk in enumerate(talks, start=1):
-        if talk.track != expected:
-            raise TemplateError(
-                f"{talk.presenter_name} 的 Track 应为 {expected}，当前为 {talk.track}"
-            )
+    for talk in talks:
         if not talk.title.strip():
             raise TemplateError(f"{talk.presenter_name} 还没有填写分享主题")
         if not (talk.abstract or "").strip():
@@ -71,7 +72,11 @@ def render_seminar_preview(
     room[1]["text"] = seminar.room or "请联系老师指定教室"
     content.append(room)
 
-    online = template.paragraph(3)
+    advisor = template.paragraph(3)
+    advisor[1]["text"] = seminar.offline_advisor or "待定"
+    content.append(advisor)
+
+    online = template.paragraph(4)
     if seminar.weekday == semester.default_seminar_weekday:
         link = semester.default_seminar_tencent_link or ""
         meeting_id = semester.default_seminar_tencent_id or ""

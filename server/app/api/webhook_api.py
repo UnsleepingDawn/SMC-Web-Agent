@@ -100,10 +100,12 @@ def _apply_seminars(db: Session, semester_id: UUID, seminars: list[Dict[str, Any
             weekday=item["weekday"],
             happened=item["happened"],
         )
+        slot_fields = {
+            "room": item.get("room") or None,
+            "offline_advisor": item.get("offline_advisor") or None,
+        }
         if existing:
-            seminar_crud.update(
-                db, db_obj=existing, obj_in={"room": item.get("room") or None}
-            )
+            seminar_crud.update(db, db_obj=existing, obj_in=slot_fields)
             target = existing
         else:
             target = seminar_crud.create(
@@ -113,7 +115,7 @@ def _apply_seminars(db: Session, semester_id: UUID, seminars: list[Dict[str, Any
                     week=item["week"],
                     weekday=item["weekday"],
                     happened=item["happened"],
-                    room=item.get("room") or None,
+                    **slot_fields,
                 ),
             )
         if not target:
