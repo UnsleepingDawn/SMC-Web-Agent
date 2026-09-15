@@ -100,6 +100,9 @@ export interface Seminar {
 	happened: boolean;
 	room: string | null;
 	offline_advisor: string | null;
+	/** "HHMM" overrides for this occurrence; null means "follow the semester default". */
+	start_time: string | null;
+	end_time: string | null;
 	presentations: SeminarPresentation[];
 }
 

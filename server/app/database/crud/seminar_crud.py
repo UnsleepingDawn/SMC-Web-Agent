@@ -31,6 +31,9 @@ class SeminarUpdate(BaseModel):
     happened: Optional[bool] = None
     room: Optional[str] = None
     offline_advisor: Optional[str] = None
+    # "HHMM"; None clears the override so the slot follows the semester default.
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
 
 
 class CRUDSeminar(CRUDBase[Seminar, SeminarCreate, SeminarUpdate]):

@@ -94,6 +94,7 @@ export default function SeminarsPage() {
 						<SeminarCard
 							key={seminar.id}
 							seminar={seminar}
+							semester={semester}
 							onEdit={setEditing}
 							onChanged={refetch}
 						/>
@@ -120,6 +121,7 @@ export default function SeminarsPage() {
 
 			<SeminarEditorDialog
 				seminar={editing}
+				semester={semester}
 				open={editing !== null}
 				onOpenChange={(open) => {
 					if (!open) setEditing(null);

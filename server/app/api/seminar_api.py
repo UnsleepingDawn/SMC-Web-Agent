@@ -39,6 +39,24 @@ class PushPreviewRequest(BaseModel):
     receive_id_type: str = "open_id"
 
 
+def _validated_time(value: Optional[str], label: str) -> Optional[str]:
+    """Normalize a slot time to "HHMM"; None clears the override."""
+    if value is None or not str(value).strip():
+        return None
+    text = str(value).strip()
+    if len(text) != 4 or not text.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{label}格式不正确，请填写四位 HHMM",
+        )
+    hours, minutes = int(text[:2]), int(text[2:])
+    if hours > 23 or minutes > 59:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"{label}不是有效时间"
+        )
+    return text
+
+
 def _load_seminar(db: Session, semester_id: str, week: int, happened: bool):
     try:
         parsed_id = UUID(semester_id)
@@ -79,7 +97,28 @@ def update_seminar(
     db_seminar = seminar_crud.get(db, id=seminar_id)
     if not db_seminar:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到该组会")
-    updated = seminar_crud.update(db=db, db_obj=db_seminar, obj_in=payload)
+
+    # An omitted time keeps the stored one, so a partial PATCH can still be
+    # checked against the effective pair rather than against half of it.
+    start = (
+        _validated_time(payload.start_time, "开始时间")
+        if "start_time" in payload.model_fields_set
+        else db_seminar.start_time
+    )
+    end = (
+        _validated_time(payload.end_time, "结束时间")
+        if "end_time" in payload.model_fields_set
+        else db_seminar.end_time
+    )
+    if start and end and start >= end:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="结束时间必须晚于开始时间"
+        )
+
+    changes = payload.model_dump(exclude_unset=True)
+    changes["start_time"] = start
+    changes["end_time"] = end
+    updated = seminar_crud.update(db=db, db_obj=db_seminar, obj_in=changes)
     if not updated:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="更新组会失败")
     return {"seminar": updated.to_dict()}

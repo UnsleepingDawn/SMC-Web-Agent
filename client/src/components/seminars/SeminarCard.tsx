@@ -9,20 +9,34 @@ import { Label } from "@/components/ui/label";
 import { MessagePreview } from "@/components/common/MessagePreview";
 import { RecipientPicker } from "@/components/common/RecipientPicker";
 import { previewSeminar, pushSeminar } from "@/lib/api";
-import { PostMessage, Recipient, Seminar, WEEKDAY_NAMES } from "@/lib/schema";
+import { PostMessage, Recipient, Seminar, Semester, WEEKDAY_NAMES } from "@/lib/schema";
+import { formatHhmm } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface SeminarCardProps {
 	seminar: Seminar;
+	semester?: Semester | null;
 	onEdit: (seminar: Seminar) => void;
 	onChanged: () => void;
 }
 
-export function SeminarCard({ seminar, onEdit, onChanged }: SeminarCardProps) {
+/**
+ * This occurrence's window, as the preview post renders it: "14:00 - 15:30".
+ * The slot's own times win; otherwise the semester default applies.
+ */
+function seminarTimeRange(seminar: Seminar, semester?: Semester | null): string {
+	const start = formatHhmm(seminar.start_time ?? semester?.default_seminar_start_time);
+	const end = formatHhmm(seminar.end_time ?? semester?.default_seminar_end_time);
+	if (!start || !end) return "";
+	return `${start} - ${end}`;
+}
+
+export function SeminarCard({ seminar, semester, onEdit, onChanged }: SeminarCardProps) {
 	const [recipient, setRecipient] = useState<Recipient | null>(null);
 	const [preview, setPreview] = useState<PostMessage | null>(null);
 	const [isPreviewing, setIsPreviewing] = useState(false);
 	const [isPushing, setIsPushing] = useState(false);
+	const timeRange = seminarTimeRange(seminar, semester);
 
 	const handlePreview = async () => {
 		setIsPreviewing(true);
@@ -63,6 +77,7 @@ export function SeminarCard({ seminar, onEdit, onChanged }: SeminarCardProps) {
 					<div className="space-y-1">
 						<CardTitle className="text-lg">
 							第 {seminar.week} 周 · {WEEKDAY_NAMES[seminar.weekday - 1] ?? ""}
+							{timeRange ? ` · ${timeRange}` : ""}
 						</CardTitle>
 						<CardDescription>
 							{seminar.room || "地点待定"}

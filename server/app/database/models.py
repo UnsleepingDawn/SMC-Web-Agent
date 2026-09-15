@@ -207,6 +207,10 @@ class Seminar(Base):
     room = Column(String, nullable=True)
     # Teacher on site for the offline session, as recorded in the seminar table.
     offline_advisor = Column(String, nullable=True)
+    # "HHMM" overrides for this one occurrence; NULL means "use the semester's
+    # default seminar time".
+    start_time = Column(String, nullable=True)
+    end_time = Column(String, nullable=True)
 
     semester = relationship("Semester", back_populates="seminars")
     presentations = relationship(

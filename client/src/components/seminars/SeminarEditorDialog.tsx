@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
+import { TimeWheelPicker, parseTimeInput } from "@/components/common/TimeWheelPicker";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -15,7 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { updatePresentations, updateSeminar } from "@/lib/api";
-import { Seminar, SeminarPresentation } from "@/lib/schema";
+import { Seminar, SeminarPresentation, Semester } from "@/lib/schema";
+import { formatHhmm } from "@/lib/utils";
 import { toast } from "sonner";
 
 function emptyPresentation(track: number): SeminarPresentation {
@@ -24,29 +26,47 @@ function emptyPresentation(track: number): SeminarPresentation {
 
 interface SeminarEditorDialogProps {
 	seminar: Seminar | null;
+	/** Supplies the fallback seminar time this slot inherits while it has no override. */
+	semester?: Semester | null;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	onSaved: () => void;
 }
 
-export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: SeminarEditorDialogProps) {
+export function SeminarEditorDialog({
+	seminar,
+	semester,
+	open,
+	onOpenChange,
+	onSaved,
+}: SeminarEditorDialogProps) {
 	const [room, setRoom] = useState("");
 	const [offlineAdvisor, setOfflineAdvisor] = useState("");
+	const [startTime, setStartTime] = useState("");
+	const [endTime, setEndTime] = useState("");
 	const [happened, setHappened] = useState(false);
 	const [presentations, setPresentations] = useState<SeminarPresentation[]>([]);
 	const [isSaving, setIsSaving] = useState(false);
+
+	const defaultStart = parseTimeInput(semester?.default_seminar_start_time ?? "") ?? "";
+	const defaultEnd = parseTimeInput(semester?.default_seminar_end_time ?? "") ?? "";
+	const defaultRange = `${formatHhmm(defaultStart)} - ${formatHhmm(defaultEnd)}`;
 
 	useEffect(() => {
 		if (!seminar) return;
 		setRoom(seminar.room ?? "");
 		setOfflineAdvisor(seminar.offline_advisor ?? "");
+		// A slot without its own time shows the inherited one, so the picker
+		// never looks empty and the user edits the value they will actually get.
+		setStartTime(parseTimeInput(seminar.start_time ?? "") ?? defaultStart);
+		setEndTime(parseTimeInput(seminar.end_time ?? "") ?? defaultEnd);
 		setHappened(seminar.happened);
 		setPresentations(
 			seminar.presentations.length > 0
 				? seminar.presentations.map((item) => ({ ...item }))
 				: [emptyPresentation(1)],
 		);
-	}, [seminar]);
+	}, [seminar, defaultStart, defaultEnd]);
 
 	const patchPresentation = (index: number, partial: Partial<SeminarPresentation>) => {
 		setPresentations((prev) =>
@@ -65,11 +85,29 @@ export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: Se
 			toast.error("报告人和主题都不能为空。");
 			return;
 		}
+		const nextStart = parseTimeInput(startTime);
+		if (!nextStart) {
+			toast.error("开始时间格式不正确，请填写 0-23 时、0-59 分。");
+			return;
+		}
+		const nextEnd = parseTimeInput(endTime);
+		if (!nextEnd) {
+			toast.error("结束时间格式不正确，请填写 0-23 时、0-59 分。");
+			return;
+		}
+		if (nextStart >= nextEnd) {
+			toast.error("结束时间必须晚于开始时间。");
+			return;
+		}
 		setIsSaving(true);
 		try {
 			await updateSeminar(seminar.id, {
 				room: room || null,
 				offline_advisor: offlineAdvisor || null,
+				// 与学期默认一致时存 null，让这一周继续跟随学期设置，只有真正
+				// 调整过的场次才留下自己的时间。
+				start_time: nextStart === defaultStart ? null : nextStart,
+				end_time: nextEnd === defaultEnd ? null : nextEnd,
 				happened,
 			});
 			await updatePresentations(
@@ -130,6 +168,28 @@ export function SeminarEditorDialog({ seminar, open, onOpenChange, onSaved }: Se
 							className="bg-muted"
 						/>
 					</div>
+				</div>
+
+				<div className="space-y-2">
+					<Label htmlFor="seminar-start-time">组会时间</Label>
+					<div className="grid grid-cols-2 gap-4">
+						<TimeWheelPicker
+							id="seminar-start-time"
+							value={startTime}
+							onChange={setStartTime}
+							disabled={isSaving}
+						/>
+						<TimeWheelPicker
+							id="seminar-end-time"
+							value={endTime}
+							onChange={setEndTime}
+							disabled={isSaving}
+						/>
+					</div>
+					<p className="text-xs text-muted-foreground">
+						填成学期默认时间即按「跟随学期设置」保存，之后改学期默认会一起变。
+						{defaultRange ? ` 当前学期默认：${defaultRange}。` : ""}
+					</p>
 				</div>
 
 				<div className="space-y-4">

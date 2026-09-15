@@ -24,6 +24,22 @@ class TemplateError(ValueError):
     """A template placeholder or business rule was not satisfied."""
 
 
+def _time_range(seminar: Seminar, semester: Semester) -> str:
+    """This occurrence's window as "HH:MM-HH:MM".
+
+    The slot's own ``start_time``/``end_time`` win when set; otherwise the
+    semester's default seminar time applies.
+    """
+    try:
+        start = format_hhmm(seminar.start_time or semester.default_seminar_start_time)
+        end = format_hhmm(seminar.end_time or semester.default_seminar_end_time)
+    except ValueError as exc:
+        raise TemplateError(
+            "组会时间格式不正确，请在学期设置或组会安排里重新填写"
+        ) from exc
+    return f"{start}-{end}"
+
+
 def _presentations(seminar: Seminar) -> List[Dict[str, Any]]:
     """The talks in track order, validated before they reach the template.
 
@@ -62,10 +78,7 @@ def render_seminar_preview(
 
     period = template.paragraph(1)
     period[2]["text"] = WEEKDAY_NAMES[seminar.weekday]
-    period[3]["text"] = (
-        f"{format_hhmm(semester.default_seminar_start_time)}"
-        f"-{format_hhmm(semester.default_seminar_end_time)}"
-    )
+    period[3]["text"] = _time_range(seminar, semester)
     content.append(period)
 
     room = template.paragraph(2)
