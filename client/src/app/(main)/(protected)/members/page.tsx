@@ -81,6 +81,7 @@ export default function MembersPage() {
 				defaultWeek={currentWeek}
 				tasks={["members"]}
 				defaultTask="members"
+				allowSyncAll
 				onCompleted={() => {
 					refetch();
 				}}

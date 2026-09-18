@@ -199,6 +199,7 @@ export default function AttendancePage() {
 					"schedule",
 				]}
 				defaultTask="daily_attendance"
+				allowSyncAll
 				onCompleted={refetch}
 			/>
 

@@ -179,6 +179,7 @@ export default function WeeklyReportsPage() {
 				defaultWeek={currentWeek}
 				tasks={["weekly_reports"]}
 				defaultTask="weekly_reports"
+				allowSyncAll
 				onCompleted={refetch}
 			/>
 

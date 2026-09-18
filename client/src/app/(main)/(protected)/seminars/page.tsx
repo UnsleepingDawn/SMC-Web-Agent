@@ -114,6 +114,7 @@ export default function SeminarsPage() {
 						defaultWeek={currentWeek}
 						tasks={["seminars"]}
 						defaultTask="seminars"
+						allowSyncAll
 						onCompleted={refetch}
 					/>
 				</CardContent>

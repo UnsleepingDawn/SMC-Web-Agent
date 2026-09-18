@@ -31,7 +31,7 @@ const TASK_LABELS: Record<SyncTask, string> = {
 
 const ALL_TASKS = Object.keys(TASK_LABELS) as SyncTask[];
 
-/** Sentinel option that submits every offered task in sequence. */
+/** Sentinel option that submits every offered task in sequence ("同步以下所有内容"). */
 export const SYNC_ALL = "__all__";
 type TaskChoice = SyncTask | typeof SYNC_ALL;
 
@@ -52,7 +52,7 @@ interface SyncPanelProps {
 	tasks?: SyncTask[];
 	/** Task selected on first render; defaults to the first offered task. */
 	defaultTask?: TaskChoice;
-	/** Offer an "全部内容" option that submits every offered task. */
+	/** Offer a "同步以下所有内容" option that submits every offered task. */
 	allowSyncAll?: boolean;
 }
 
@@ -81,8 +81,10 @@ export function SyncPanel({
 		if (defaultWeek) setWeek(String(defaultWeek));
 	}, [defaultWeek]);
 
-	// Any task in the selection needs the week input when submitted in bulk.
-	const needsWeek = task === SYNC_ALL || WEEK_TASKS.includes(task as SyncTask);
+	// Only show the week input when the selection actually needs a week.
+	const bulkNeedsWeek = availableTasks.some((item) => WEEK_TASKS.includes(item));
+	const needsWeek =
+		task === SYNC_ALL ? bulkNeedsWeek : WEEK_TASKS.includes(task as SyncTask);
 
 	// Poll the batch while it is queued or executing.
 	useEffect(() => {
@@ -203,7 +205,7 @@ export function SyncPanel({
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								{allowSyncAll ? <SelectItem value={SYNC_ALL}>全部内容</SelectItem> : null}
+								{allowSyncAll ? <SelectItem value={SYNC_ALL}>同步以下所有内容</SelectItem> : null}
 								{availableTasks.map((key) => (
 									<SelectItem key={key} value={key}>
 										{TASK_LABELS[key]}
