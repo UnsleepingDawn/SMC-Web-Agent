@@ -179,18 +179,14 @@ def build_daily_summary(db: Session, semester, week: int) -> Dict[str, Any]:
         )
     )
 
-    chart = []
-    for row in rows[:15]:
-        label = row["member_name"]
-        if row["absent_count"] == 0 and row["late_count"] < 3:
-            label = "***"
-        chart.append(
-            {
-                "name": label,
-                "absent": row["absent_count"],
-                "late": row["late_count"],
-            }
-        )
+    chart = [
+        {
+            "name": row["member_name"],
+            "absent": row["absent_count"],
+            "late": row["late_count"],
+        }
+        for row in rows
+    ]
 
     return {
         "week": week,

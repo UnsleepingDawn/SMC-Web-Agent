@@ -22,6 +22,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle } from "@/components/ui/toggle";
 import { useAttendance } from "@/hooks/useAttendance";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { exportDailyAttendance, getSemesters, setSeminarManual, submitSeminarRelay } from "@/lib/api";
@@ -57,12 +58,19 @@ export default function AttendancePage() {
 	const [manualText, setManualText] = useState("");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isExporting, setIsExporting] = useState(false);
+	const [onlyAbsent3, setOnlyAbsent3] = useState(true);
 
 	useEffect(() => {
 		getSemesters()
 			.then((response) => setSemesters(response.semesters))
 			.catch(() => setSemesters([]));
 	}, []);
+
+	/** Chart-only view: the detail table below stays unaffected by this filter. */
+	const chartData = useMemo(
+		() => (daily?.chart ?? []).filter((item) => !onlyAbsent3 || item.absent >= 3),
+		[daily, onlyAbsent3],
+	);
 
 	const scheduleByMember = useMemo(() => {
 		const map = new Map<string, Record<number, string[]>>();
@@ -228,7 +236,26 @@ export default function AttendancePage() {
 								)}
 								导出 Excel
 							</Button>
-							<AttendanceBarChart data={daily?.chart ?? []} />
+							<div className="flex flex-wrap items-center justify-between gap-2">
+								<span className="text-sm text-muted-foreground">
+									当前显示 {chartData.length} 人
+								</span>
+								<Toggle
+									variant="outline"
+									size="sm"
+									pressed={onlyAbsent3}
+									onPressedChange={setOnlyAbsent3}
+								>
+									只看缺卡 ≥ 3 次
+								</Toggle>
+							</div>
+							{chartData.length > 0 ? (
+								<AttendanceBarChart data={chartData} />
+							) : (
+								<p className="text-sm text-muted-foreground">
+									{onlyAbsent3 ? "本周没有缺卡 ≥ 3 次的同学。" : "本周没有考勤记录。"}
+								</p>
+							)}
 							{daily && daily.rows.length > 0 ? (
 								<Table>
 									<TableHeader>
