@@ -21,6 +21,7 @@ import type {
 	PushTeacherResult,
 	WeeklyPushConfig,
 	WeeklyPushDraft,
+	WeeklyReportMissed,
 	WeeklyReportStats,
 } from '@/lib/schema';
 
@@ -253,6 +254,16 @@ export function previewWeeklySummary(
     const query = new URLSearchParams({ week: String(week) });
     if (semesterId) query.set('semester_id', semesterId);
     return fetchFromApi(`/api/weekly-reports/summary?${query.toString()}`);
+}
+
+/** Accumulated missed weeks per member, since their last submission. */
+export function getWeeklyReportMissed(
+    week: number,
+    semesterId?: string,
+): Promise<WeeklyReportMissed> {
+    const query = new URLSearchParams({ week: String(week) });
+    if (semesterId) query.set('semester_id', semesterId);
+    return fetchFromApi(`/api/weekly-reports/missed?${query.toString()}`);
 }
 
 export function getTeacherPushPlan(

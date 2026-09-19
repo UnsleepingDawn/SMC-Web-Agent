@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from app.auth.dependencies import get_required_user
@@ -87,6 +87,51 @@ def weekly_report_stats(
         "submitted_count": len(submitted),
         "missing_count": len(missing),
     }
+
+
+@weekly_report_router.get("/missed")
+def weekly_report_missed(
+    week: int,
+    semester_id: Optional[str] = None,
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    """How many weeks each member owes since their last submission.
+
+    Weeks 1..``week`` are all counted: a week with no stored report counts as
+    missed, including the selected week itself. Members with nothing to catch
+    up on (missed == 0) are left out so the chart only shows problems.
+    """
+    db_semester = _resolve_semester(db, semester_id)
+    submitted = weekly_report_crud.weeks_by_member(
+        db, semester_id=db_semester.id
+    )
+
+    chart: List[Dict[str, Any]] = []
+    for member in weekly_report_crud.expected_members(db):
+        weeks = [
+            value
+            for value in submitted.get(member.name, set())
+            if 1 <= value <= week
+        ]
+        if not weeks:
+            missed = week
+            never_submitted = True
+        else:
+            missed = week - max(weeks)
+            never_submitted = False
+        if missed <= 0:
+            continue
+        chart.append(
+            {
+                "name": member.name,
+                "missed": missed,
+                "never_submitted": never_submitted,
+            }
+        )
+
+    chart.sort(key=lambda row: (-row["missed"], row["name"]))
+    return {"week": week, "chart": chart}
 
 
 @weekly_report_router.get("/summary")

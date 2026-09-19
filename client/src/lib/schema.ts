@@ -126,6 +126,19 @@ export interface WeeklyReportStats {
 	missing_count: number;
 }
 
+/** One member's accumulated missed weeks since their last submission. */
+export interface WeeklyReportMissedRow {
+	name: string;
+	missed: number;
+	/** True when the member has no report at all in the semester so far. */
+	never_submitted: boolean;
+}
+
+export interface WeeklyReportMissed {
+	week: number;
+	chart: WeeklyReportMissedRow[];
+}
+
 /** A teacher read from the address book's Tenure department. */
 export interface WeeklyPushTeacher {
 	name: string;

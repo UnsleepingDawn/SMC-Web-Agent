@@ -27,10 +27,12 @@ import { MessagePreview } from "@/components/common/MessagePreview";
 import { PageHeader } from "@/components/common/PageHeader";
 import { RecipientPicker } from "@/components/common/RecipientPicker";
 import { SyncPanel } from "@/components/sync/SyncPanel";
+import { WeeklyReportMissedChart } from "@/components/weekly-reports/WeeklyReportMissedChart";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useSemesters } from "@/hooks/useSemesters";
 import { useTeacherPushPlan } from "@/hooks/useTeacherPushPlan";
 import { useWeeklyPushDraft } from "@/hooks/useWeeklyPushDraft";
+import { useWeeklyReportMissed } from "@/hooks/useWeeklyReportMissed";
 import { useWeeklyReports } from "@/hooks/useWeeklyReports";
 import {
 	previewWeeklySummary,
@@ -100,6 +102,11 @@ export default function WeeklyReportsPage() {
 	const [week, setWeek] = useState<number | null>(null);
 	const activeWeek = week ?? currentWeek ?? 0;
 	const { stats, isLoading, error, refetch } = useWeeklyReports(activeWeek, semester?.id);
+	const {
+		summary: missed,
+		isLoading: isMissedLoading,
+		refetch: refetchMissed,
+	} = useWeeklyReportMissed(activeWeek, semester?.id);
 
 	const [recipient, setRecipient] = useState<Recipient | null>(null);
 	const [preview, setPreview] = useState<PostMessage | null>(null);
@@ -229,9 +236,9 @@ export default function WeeklyReportsPage() {
 
 	/** A finished sync can change every statistic on this page, so refresh them all. */
 	const handleSyncCompleted = useCallback(async () => {
-		await Promise.all([refetch(), refetchPlan()]);
+		await Promise.all([refetch(), refetchPlan(), refetchMissed()]);
 		if (preview) await loadPreview();
-	}, [refetch, refetchPlan, loadPreview, preview]);
+	}, [refetch, refetchPlan, refetchMissed, loadPreview, preview]);
 
 	/**
 	 * The POST only enqueues; the Feishu call happens in the worker. Turn the
@@ -420,6 +427,25 @@ export default function WeeklyReportsPage() {
 					</CardHeader>
 				</Card>
 			) : null}
+
+			<Card>
+				<CardHeader>
+					<CardTitle>缺交次数</CardTitle>
+					<CardDescription>
+						自上次提交周报后的累计缺交周数，含当前所选周次；红色表示从未提交过。
+					</CardDescription>
+				</CardHeader>
+				<CardContent>
+					{isMissedLoading ? (
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<Loader2 className="h-4 w-4 animate-spin" />
+							正在统计缺交次数...
+						</div>
+					) : (
+						<WeeklyReportMissedChart data={missed?.chart ?? []} />
+					)}
+				</CardContent>
+			</Card>
 
 			<Card>
 				<CardHeader>

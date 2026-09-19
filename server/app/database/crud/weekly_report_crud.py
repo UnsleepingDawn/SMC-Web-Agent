@@ -36,18 +36,36 @@ class CRUDWeeklyReport(CRUDBase[WeeklyReport, WeeklyReportCreate, WeeklyReportUp
             .all()
         )
 
+    def expected_members(self, db: Session) -> List[Member]:
+        """Who is expected to submit: active members flagged for attendance."""
+        return (
+            db.query(Member)
+            .filter(Member.need_attendance.is_(True), Member.is_active.is_(True))
+            .order_by(Member.name)
+            .all()
+        )
+
+    def weeks_by_member(
+        self, db: Session, *, semester_id: UUID
+    ) -> Dict[str, set]:
+        """The weeks each member has a report for, keyed by name."""
+        weeks: Dict[str, set] = {}
+        rows = (
+            db.query(WeeklyReport.member_name, WeeklyReport.week)
+            .filter(WeeklyReport.semester_id == semester_id)
+            .all()
+        )
+        for member_name, week in rows:
+            weeks.setdefault(member_name, set()).add(week)
+        return weeks
+
     def submitted_and_missing(
         self, db: Session, *, semester_id: UUID, week: int
     ) -> tuple[List[WeeklyReport], List[Member]]:
         """Submitted rows plus the expected-but-missing members for the week."""
         submitted = self.list_by_week(db, semester_id=semester_id, week=week)
         submitted_names = {row.member_name for row in submitted}
-        expected = (
-            db.query(Member)
-            .filter(Member.need_attendance.is_(True), Member.is_active.is_(True))
-            .order_by(Member.name)
-            .all()
-        )
+        expected = self.expected_members(db)
         missing = [m for m in expected if m.name not in submitted_names]
         return submitted, missing
 
