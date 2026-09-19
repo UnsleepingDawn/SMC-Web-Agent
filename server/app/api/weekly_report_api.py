@@ -144,6 +144,14 @@ def _teacher_push_plan(db: Session, semester, week: int) -> dict:
                     "has_attachment": bool(record and record.attachments),
                 }
             )
+        # Reading order both on the page and in the message: submitted first, and
+        # among them the ones with a link on top. `enrolled` is already ordered by
+        # name, so a stable sort keeps names alphabetical inside each tier.
+        students.sort(
+            key=lambda item: (
+                0 if item["doc_link"] else (1 if item["submitted"] else 2)
+            )
+        )
         teachers.append(
             {
                 "name": teacher.name,
