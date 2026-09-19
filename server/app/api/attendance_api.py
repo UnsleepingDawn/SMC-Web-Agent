@@ -301,6 +301,76 @@ def build_seminar_summary(db: Session, semester, week: int) -> Dict[str, Any]:
     }
 
 
+@attendance_router.get("/seminar/missed")
+def get_seminar_missed(
+    semester_id: str,
+    week: int,
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    """Weeks each member owes since their last seminar attendance.
+
+    Weeks where the member was on leave or had a course at the seminar period
+    are skipped entirely: they neither count as attendance nor as an absence.
+    """
+    semester = _resolve_semester(db, semester_id)
+    return build_seminar_missed(db, semester, week)
+
+
+def build_seminar_missed(db: Session, semester, week: int) -> Dict[str, Any]:
+    """Weeks each member owes since their last seminar attendance."""
+    period = safe_day_period(semester.default_seminar_start_time) or "晚上"
+
+    # Course exemption depends on the weekday of each occurrence, so the
+    # semester timetable is bucketed by weekday once and reused per week.
+    exempt_by_weekday: Dict[int, set] = {}
+    for entry in schedule_entry_crud.list_by_semester(db, semester_id=semester.id):
+        if entry.period == period and entry.member_name:
+            exempt_by_weekday.setdefault(int(entry.weekday), set()).add(
+                str(entry.member_name)
+            )
+
+    observed = seminar_attendance_crud.weeks_by_member(
+        db, semester_id=semester.id
+    )
+    leaves = seminar_leave_crud.weeks_by_member(db, semester_id=semester.id)
+
+    # The seminar weekday is per week, not per member, so resolve it once.
+    weekdays = {
+        candidate: _seminar_weekday(db, semester, candidate)
+        for candidate in range(1, week + 1)
+    }
+
+    chart: List[Dict[str, Any]] = []
+    for name in _expected_names(db, semester.id):
+        leave_weeks = leaves.get(name, set())
+        attended = observed.get(name, set())
+        eligible: List[int] = []
+        for candidate in range(1, week + 1):
+            if candidate in leave_weeks:
+                continue
+            if name in exempt_by_weekday.get(weekdays[candidate], set()):
+                continue
+            eligible.append(candidate)
+
+        hit = [candidate for candidate in eligible if candidate in attended]
+        if not hit:
+            missed = len(eligible)
+            never_attended = True
+        else:
+            last = max(hit)
+            missed = sum(1 for candidate in eligible if candidate > last)
+            never_attended = False
+        if missed <= 0:
+            continue
+        chart.append(
+            {"name": name, "missed": missed, "never_attended": never_attended}
+        )
+
+    chart.sort(key=lambda row: (-row["missed"], row["name"]))
+    return {"week": week, "chart": chart}
+
+
 @attendance_router.post("/seminar/relay")
 def submit_seminar_relay(
     payload: RelayRequest,

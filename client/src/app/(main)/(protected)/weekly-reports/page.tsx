@@ -24,10 +24,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/common/EmptyState";
 import { MessagePreview } from "@/components/common/MessagePreview";
+import { MissedBarChart } from "@/components/common/MissedBarChart";
 import { PageHeader } from "@/components/common/PageHeader";
 import { RecipientPicker } from "@/components/common/RecipientPicker";
 import { SyncPanel } from "@/components/sync/SyncPanel";
-import { WeeklyReportMissedChart } from "@/components/weekly-reports/WeeklyReportMissedChart";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useSemesters } from "@/hooks/useSemesters";
 import { useTeacherPushPlan } from "@/hooks/useTeacherPushPlan";
@@ -442,7 +442,17 @@ export default function WeeklyReportsPage() {
 							正在统计缺交次数...
 						</div>
 					) : (
-						<WeeklyReportMissedChart data={missed?.chart ?? []} />
+						<MissedBarChart
+							data={(missed?.chart ?? []).map((row) => ({
+								name: row.name,
+								missed: row.missed,
+								never: row.never_submitted,
+							}))}
+							emptyText="还没有缺交记录。"
+							unit="缺交"
+							neverLabel="从未提交"
+							missedLabel="提交过但有缺交"
+						/>
 					)}
 				</CardContent>
 			</Card>

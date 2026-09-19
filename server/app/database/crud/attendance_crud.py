@@ -101,6 +101,21 @@ class CRUDSeminarAttendance(
             .all()
         )
 
+    def weeks_by_member(self, db: Session, *, semester_id: UUID) -> Dict[str, set]:
+        """The weeks each member was observed, keyed by name."""
+        rows = (
+            db.query(SeminarAttendanceRecord.member_name, SeminarAttendanceRecord.week)
+            .filter(
+                SeminarAttendanceRecord.semester_id == semester_id,
+                SeminarAttendanceRecord.observed.is_(True),
+            )
+            .all()
+        )
+        weeks: Dict[str, set] = {}
+        for name, week in rows:
+            weeks.setdefault(str(name), set()).add(week)
+        return weeks
+
     def set_observed(
         self,
         db: Session,
@@ -285,6 +300,18 @@ class CRUDSeminarLeave(CRUDBase[SeminarLeave, SeminarLeaveCreate, BaseModel]):
             .order_by(SeminarLeave.member_name)
             .all()
         )
+
+    def weeks_by_member(self, db: Session, *, semester_id: UUID) -> Dict[str, set]:
+        """The weeks each member was on leave, keyed by name."""
+        rows = (
+            db.query(SeminarLeave.member_name, SeminarLeave.week)
+            .filter(SeminarLeave.semester_id == semester_id)
+            .all()
+        )
+        weeks: Dict[str, set] = {}
+        for name, week in rows:
+            weeks.setdefault(str(name), set()).add(week)
+        return weeks
 
     def replace_week(
         self,

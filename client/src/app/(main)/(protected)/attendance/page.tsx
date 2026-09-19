@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { AttendanceBarChart } from "@/components/attendance/AttendanceBarChart";
 import { ScheduleWeekGrid } from "@/components/attendance/ScheduleWeekGrid";
 import { EmptyState } from "@/components/common/EmptyState";
+import { MissedBarChart } from "@/components/common/MissedBarChart";
 import { PageHeader } from "@/components/common/PageHeader";
 import { SyncPanel } from "@/components/sync/SyncPanel";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Toggle } from "@/components/ui/toggle";
 import { useAttendance } from "@/hooks/useAttendance";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
+import { useSeminarMissed } from "@/hooks/useSeminarMissed";
 import { exportDailyAttendance, getSemesters, setSeminarManual, submitSeminarRelay } from "@/lib/api";
 import { Semester, WEEKDAY_NAMES } from "@/lib/schema";
 import { toast } from "sonner";
@@ -53,6 +55,15 @@ export default function AttendancePage() {
 		semester?.id,
 		activeWeek,
 	);
+	const {
+		summary: missed,
+		isLoading: isMissedLoading,
+		refetch: refetchMissed,
+	} = useSeminarMissed(semester?.id, activeWeek);
+
+	const handleSyncCompleted = useCallback(async () => {
+		await Promise.all([refetch(), refetchMissed()]);
+	}, [refetch, refetchMissed]);
 
 	const [relayText, setRelayText] = useState("");
 	const [manualText, setManualText] = useState("");
@@ -189,7 +200,7 @@ export default function AttendancePage() {
 				]}
 				defaultTask="daily_attendance"
 				allowSyncAll
-				onCompleted={refetch}
+				onCompleted={handleSyncCompleted}
 			/>
 
 			<Card>
@@ -341,6 +352,33 @@ export default function AttendancePage() {
 							) : (
 								<EmptyState title="暂无组会考勤" description="同步组会考勤后可在此查看出勤情况。" />
 							)}
+
+							<div className="space-y-3 border-t pt-4">
+								<div>
+									<p className="text-sm font-medium">缺勤次数</p>
+									<p className="text-xs text-muted-foreground">
+										自上次出勤后的累计缺勤周数，含当前所选周次；请假与当周有课的周不计入，红色表示从未出勤。
+									</p>
+								</div>
+								{isMissedLoading ? (
+									<div className="flex items-center gap-2 text-sm text-muted-foreground">
+										<Loader2 className="h-4 w-4 animate-spin" />
+										正在统计缺勤次数...
+									</div>
+								) : (
+									<MissedBarChart
+										data={(missed?.chart ?? []).map((row) => ({
+											name: row.name,
+											missed: row.missed,
+											never: row.never_attended,
+										}))}
+										emptyText="还没有缺勤记录。"
+										unit="缺勤"
+										neverLabel="从未出勤"
+										missedLabel="出勤过但有缺勤"
+									/>
+								)}
+							</div>
 
 							<div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
 								<div className="space-y-2">

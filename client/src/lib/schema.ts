@@ -139,6 +139,19 @@ export interface WeeklyReportMissed {
 	chart: WeeklyReportMissedRow[];
 }
 
+/** One member's accumulated seminar absences since their last attendance. */
+export interface SeminarMissedRow {
+	name: string;
+	missed: number;
+	/** True when the member has never attended a seminar this semester. */
+	never_attended: boolean;
+}
+
+export interface SeminarMissed {
+	week: number;
+	chart: SeminarMissedRow[];
+}
+
 /** A teacher read from the address book's Tenure department. */
 export interface WeeklyPushTeacher {
 	name: string;

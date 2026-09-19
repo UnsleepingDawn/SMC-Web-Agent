@@ -19,6 +19,7 @@ import type {
 	SyncTask,
 	TeacherPushPlan,
 	PushTeacherResult,
+	SeminarMissed,
 	WeeklyPushConfig,
 	WeeklyPushDraft,
 	WeeklyReportMissed,
@@ -264,6 +265,15 @@ export function getWeeklyReportMissed(
     const query = new URLSearchParams({ week: String(week) });
     if (semesterId) query.set('semester_id', semesterId);
     return fetchFromApi(`/api/weekly-reports/missed?${query.toString()}`);
+}
+
+/** Accumulated seminar absences per member, since their last attendance. */
+export function getSeminarMissed(
+    semesterId: string,
+    week: number,
+): Promise<SeminarMissed> {
+    const query = new URLSearchParams({ semester_id: semesterId, week: String(week) });
+    return fetchFromApi(`/api/attendance/seminar/missed?${query.toString()}`);
 }
 
 export function getTeacherPushPlan(
