@@ -164,6 +164,51 @@ def render_weekly_summary(
     )
 
 
+def render_teacher_weekly_reports(
+    *,
+    semester: Semester,
+    week: int,
+    teacher_name: str,
+    students: List[Dict[str, Any]],
+    for_admin: bool = False,
+) -> Dict[str, Any]:
+    """One teacher's weekly-report digest: the overall link plus each student's.
+
+    ``for_admin`` renders the same body but labels the title with the intended
+    teacher, so the admin dry run makes clear who each message is for.
+    """
+    template = load_template("weekly_report_teacher")
+
+    content: List[List[Dict[str, Any]]] = []
+
+    link_paragraph = template.paragraph(0)
+    link_paragraph[1]["href"] = semester.weekly_report_url or "http://www.feishu.cn"
+    content.append(link_paragraph)
+
+    content.append(template.paragraph(1))  # 组内学生周报 heading
+
+    for student in students:
+        row = template.paragraph(2)
+        row[0]["text"] = f"{student['name']}: "
+        if student.get("doc_link"):
+            row[1] = {
+                "tag": "a",
+                "href": str(student["doc_link"]),
+                "text": "查看周报",
+            }
+        elif student.get("submitted"):
+            row[1] = {"tag": "text", "text": "已提交（无链接）"}
+        else:
+            row[1] = {"tag": "text", "text": "未提交"}
+        content.append(row)
+
+    if for_admin:
+        title = f"{semester.name}-第{week}周周报汇总（发给{teacher_name}老师）"
+    else:
+        title = f"{semester.name}-第{week}周周报汇总（{teacher_name}老师组）"
+    return template.to_payload(title, content)
+
+
 def member_open_id(member: Member) -> Optional[str]:
     """The Feishu ``open_id`` we address messages to."""
     return member.feishu_account or None

@@ -58,7 +58,7 @@ export function WeeklyReportOverview({ semesterId, currentWeek }: WeeklyReportOv
 							href="/weekly-reports"
 							className="inline-block text-sm text-blue-600 hover:underline dark:text-blue-400"
 						>
-							查看周报统计与催交 →
+							查看周报统计 →
 						</Link>
 					</div>
 				)}

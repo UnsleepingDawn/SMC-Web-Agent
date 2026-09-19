@@ -7,14 +7,19 @@ from typing import Any, Dict
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.attendance_crud import attendance_group as attendance_group_crud
-from app.database.crud.member_crud import member as member_crud
+from app.database.crud.member_crud import (
+    member as member_crud,
+    teacher_department_name,
+)
 from app.database.crud.notification_crud import notification as notification_crud
 from app.database.database import get_db
 from app.database.models import Member
 from app.helpers.runtime_config import (
     get_feishu_config,
+    get_weekly_push_admin_open_id,
     public_feishu_config,
     set_feishu_config,
+    set_weekly_push_admin_open_id,
 )
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends
@@ -32,6 +37,10 @@ RECENT_RECIPIENT_LIMIT = 3
 class FeishuConfigRequest(BaseModel):
     app_id: str
     app_secret: str = ""
+
+
+class WeeklyPushConfigRequest(BaseModel):
+    admin_open_id: str = ""
 
 
 def _member_recipient(member: Member) -> Dict[str, Any]:
@@ -120,3 +129,40 @@ def write_feishu_config(
         {"feishu_app_id": payload.app_id, "feishu_app_secret": payload.app_secret},
     )
     return public_feishu_config(get_feishu_config(db))
+
+
+def _weekly_push_response(db: Session) -> Dict[str, Any]:
+    """Admin target plus the teachers read from the address book.
+
+    Teachers are read-only: they are whoever currently sits in the Tenure
+    department, so a personnel change needs no configuration edit.
+    """
+    admin_open_id = get_weekly_push_admin_open_id(db)
+    teachers = [
+        {"name": row.name, "open_id": row.feishu_account or ""}
+        for row in member_crud.list_teachers(db)
+    ]
+    return {
+        "teachers": teachers,
+        "teacher_department": teacher_department_name(),
+        "admin_open_id": admin_open_id,
+        "admin_configured": bool(admin_open_id),
+    }
+
+
+@settings_router.get("/weekly-push")
+def read_weekly_push_config(
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    return _weekly_push_response(db)
+
+
+@settings_router.put("/weekly-push")
+def write_weekly_push_config(
+    payload: WeeklyPushConfigRequest,
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    set_weekly_push_admin_open_id(db, payload.admin_open_id)
+    return _weekly_push_response(db)

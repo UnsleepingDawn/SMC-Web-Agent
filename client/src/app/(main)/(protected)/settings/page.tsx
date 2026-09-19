@@ -8,6 +8,7 @@ import { ProfileSection } from "@/components/settings/ProfileSection";
 import { PasswordSection } from "@/components/settings/PasswordSection";
 import { SemesterSection } from "@/components/settings/SemesterSection";
 import { FeishuSection } from "@/components/settings/FeishuSection";
+import { WeeklyPushSection } from "@/components/settings/WeeklyPushSection";
 
 function SettingsContent() {
 	const { user, loading } = useAuth();
@@ -33,6 +34,7 @@ function SettingsContent() {
 			<PasswordSection />
 			<SemesterSection />
 			<FeishuSection />
+			<WeeklyPushSection />
 		</div>
 	);
 }

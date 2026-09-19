@@ -38,6 +38,14 @@ cp .env.example .env.local
 | `FEISHU_APP_ID` / `FEISHU_APP_SECRET` | 飞书自建应用凭据 |
 | `LOCAL_AUTH_EMAIL` / `LOCAL_AUTH_PASSWORD` | 首个登录账号，密码至少 12 位 |
 
+选填（有默认值）：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `FEISHU_ATTENDANCE_GROUP_NAME` | `SMC考勤` | 决定「应提交周报 / 应到组会」的人员集合 |
+| `FEISHU_TEACHER_DEPARTMENT_NAME` | `Tenure` | 周报「推送给老师」的老师所在通讯录部门 |
+| `SMC_ADMIN_OPEN_ID` | 管理员的 open_id | 周报推送前先发一份给该管理员的飞书 open_id，可在设置页覆盖 |
+
 `.env.local` 已被 `.gitignore` 排除，绝不提交。
 
 ## 3. 日常操作

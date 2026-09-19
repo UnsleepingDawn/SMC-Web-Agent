@@ -126,6 +126,43 @@ export interface WeeklyReportStats {
 	missing_count: number;
 }
 
+/** A teacher read from the address book's Tenure department. */
+export interface WeeklyPushTeacher {
+	name: string;
+	open_id: string;
+}
+
+export interface WeeklyPushConfig {
+	/** Read-only: derived from the address-book department, not configured here. */
+	teachers: WeeklyPushTeacher[];
+	teacher_department: string;
+	admin_open_id: string;
+	admin_configured: boolean;
+}
+
+export interface TeacherPushStudent {
+	name: string;
+	doc_link: string | null;
+	submitted: boolean;
+}
+
+export interface TeacherPushGroup {
+	name: string;
+	open_id: string;
+	student_count: number;
+	submitted_count: number;
+	students: TeacherPushStudent[];
+}
+
+export interface TeacherPushPlan {
+	week: number;
+	report_url: string | null;
+	/** Address-book department the teacher roster is read from. */
+	teacher_department: string;
+	admin_configured: boolean;
+	teachers: TeacherPushGroup[];
+}
+
 export interface Notification {
 	id: string;
 	channel: string;

@@ -1,13 +1,17 @@
-"""Weekly report statistics, reminders and the weekly summary push."""
+"""Weekly report statistics, the weekly summary push, and the teacher push."""
 
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from app.api.attendance_api import build_daily_summary, build_seminar_summary
 from app.auth.dependencies import get_required_user
+from app.database.crud.member_crud import (
+    member as member_crud,
+    teacher_department_name,
+)
 from app.database.crud.notification_crud import (
     NotificationCreate,
     notification as notification_crud,
@@ -17,8 +21,9 @@ from app.database.crud.weekly_report_crud import (
     weekly_report as weekly_report_crud,
 )
 from app.database.database import get_db
-from app.feishu.renderer import render_weekly_summary
+from app.feishu.renderer import render_teacher_weekly_reports, render_weekly_summary
 from app.helpers.feishu_jobs import feishu_jobs
+from app.helpers.runtime_config import get_weekly_push_admin_open_id
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -49,6 +54,13 @@ def _attendance_kwargs(db: Session, semester, week: int) -> dict:
 class PushRequest(BaseModel):
     receive_id: str
     receive_id_type: str = "open_id"
+
+
+class TeacherPushRequest(BaseModel):
+    teacher_names: List[str]
+    # "teachers" sends to each teacher; "admin" sends the same bodies to the
+    # admin first, as a dry run.
+    audience: str = "teachers"
 
 
 def _resolve_semester(db: Session, semester_id: Optional[str]):
@@ -109,51 +121,155 @@ def weekly_summary_preview(
     return {"payload": payload}
 
 
-@weekly_report_router.post("/remind")
-def remind_missing(
+def _teacher_push_plan(db: Session, semester, week: int) -> dict:
+    """Group enrolled students by advisor and attach this week's report link.
+
+    Teachers are read from the address book's Tenure department, so the roster
+    needs no manual upkeep. A teacher without a Feishu account or without
+    enrolled students still appears, so the UI can disable them explicitly.
+    """
+    teachers_rows = member_crud.list_teachers(db)
+    enrolled = member_crud.list_enrolled(db)
+    reports = weekly_report_crud.list_by_week(
+        db, semester_id=semester.id, week=week
+    )
+    links = {}
+    for row in reports:
+        # First record wins, matching the submitted/missing split.
+        links.setdefault(row.member_name, row.doc_link)
+
+    students_by_advisor: dict = {}
+    for student in enrolled:
+        students_by_advisor.setdefault(student.advisor or "", []).append(student)
+
+    teachers = []
+    for teacher in teachers_rows:
+        students = []
+        for student in students_by_advisor.get(teacher.name, []):
+            submitted = student.name in links
+            students.append(
+                {
+                    "name": student.name,
+                    "doc_link": links.get(student.name) if submitted else None,
+                    "submitted": submitted,
+                }
+            )
+        teachers.append(
+            {
+                "name": teacher.name,
+                "open_id": teacher.feishu_account or "",
+                "student_count": len(students),
+                "submitted_count": sum(1 for s in students if s["submitted"]),
+                "students": students,
+            }
+        )
+
+    return {
+        "week": week,
+        "report_url": semester.weekly_report_url,
+        "teacher_department": teacher_department_name(),
+        "admin_configured": bool(get_weekly_push_admin_open_id(db)),
+        "teachers": teachers,
+    }
+
+
+@weekly_report_router.get("/teacher-push")
+def teacher_push_plan(
     week: int,
     semester_id: Optional[str] = None,
-    message: Optional[str] = None,
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
 ):
-    """Send a direct message to everyone who has not submitted this week."""
     db_semester = _resolve_semester(db, semester_id)
-    _, missing = weekly_report_crud.submitted_and_missing(
-        db, semester_id=db_semester.id, week=week
-    )
-    if not missing:
-        return {"sent": 0, "message": "本周所有人都已提交周报"}
+    return _teacher_push_plan(db, db_semester, week)
 
-    text = message or f"【周报提醒】{db_semester.name} 第{week}周周报还没有提交，请尽快填写。"
-    submitted_tasks = []
-    for row in missing:
-        open_id = row.feishu_account
-        if not open_id:
-            logger.warning("Member %s has no Feishu account; skipping reminder", row.name)
+
+@weekly_report_router.post("/teacher-push")
+def push_to_teachers(
+    week: int,
+    payload: TeacherPushRequest,
+    semester_id: Optional[str] = None,
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    """Send each selected teacher their group's weekly-report links.
+
+    ``audience="admin"`` is the dry run: identical bodies, but addressed to the
+    admin so a mistake never reaches a teacher first.
+    """
+    if payload.audience not in ("teachers", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="推送对象不合法"
+        )
+    if not payload.teacher_names:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="请至少选择一位老师"
+        )
+
+    admin_open_id = get_weekly_push_admin_open_id(db)
+    if payload.audience == "admin" and not admin_open_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="还没有配置管理员飞书 ID"
+        )
+
+    db_semester = _resolve_semester(db, semester_id)
+    plan = _teacher_push_plan(db, db_semester, week)
+    selected = set(payload.teacher_names)
+
+    sent: List[str] = []
+    skipped: List[str] = []
+    for teacher in plan["teachers"]:
+        if teacher["name"] not in selected:
             continue
+        if teacher["student_count"] == 0:
+            skipped.append(teacher["name"])
+            continue
+        if not teacher["open_id"]:
+            skipped.append(teacher["name"])
+            continue
+
+        for_admin = payload.audience == "admin"
+        message = render_teacher_weekly_reports(
+            semester=db_semester,
+            week=week,
+            teacher_name=teacher["name"],
+            students=teacher["students"],
+            for_admin=for_admin,
+        )
+        receive_id = admin_open_id if for_admin else teacher["open_id"]
+        template_key = (
+            "weekly_teacher_reports_preview"
+            if for_admin
+            else "weekly_teacher_reports"
+        )
 
         record = notification_crud.create(
             db,
             obj_in=NotificationCreate(
-                template_key="weekly_reminder",
-                target=open_id,
-                payload={"week": week, "member_name": row.name, "text": text},
+                template_key=template_key,
+                target=receive_id,
+                payload={**message, "teacher": teacher["name"]},
             ),
         )
         if not record:
+            logger.warning("Failed to create notification for %s", teacher["name"])
             continue
 
-        task_id = feishu_jobs.send_message(
+        feishu_jobs.send_message(
             notification_id=record.id,
-            receive_id=open_id,
-            msg_type="text",
-            title=None,
-            content=text,
+            receive_id=receive_id,
+            msg_type="post",
+            title=message["zh_cn"]["title"],
+            content=message["zh_cn"]["content"],
         )
-        submitted_tasks.append({"member": row.name, "task_id": task_id})
+        sent.append(teacher["name"])
 
-    return {"sent": len(submitted_tasks), "tasks": submitted_tasks}
+    return {
+        "sent": len(sent),
+        "audience": payload.audience,
+        "teachers": sent,
+        "skipped": skipped,
+    }
 
 
 @weekly_report_router.post("/push")

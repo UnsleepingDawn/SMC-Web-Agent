@@ -1,0 +1,18 @@
+{
+  "zh_cn": {
+    "title": "1999-Spring-第0周周报汇总",
+    "content": [
+      [
+        { "tag": "text", "text": "本周周报链接: ", "style": ["bold"] },
+        { "tag": "a", "href": "http://www.feishu.cn", "text": "SMC周报链接" }
+      ],
+      [
+        { "tag": "text", "text": "组内学生周报:", "style": ["bold", "underline"] }
+      ],
+      [
+        { "tag": "text", "text": "", "style": ["bold"] },
+        { "tag": "a", "href": "http://www.feishu.cn", "text": "查看周报" }
+      ]
+    ]
+  }
+}

@@ -1,12 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2, Send } from "lucide-react";
+import {
+	AlertDialog,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/common/EmptyState";
 import { MessagePreview } from "@/components/common/MessagePreview";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -14,10 +22,13 @@ import { RecipientPicker } from "@/components/common/RecipientPicker";
 import { SyncPanel } from "@/components/sync/SyncPanel";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useSemesters } from "@/hooks/useSemesters";
+import { useTeacherPushPlan } from "@/hooks/useTeacherPushPlan";
 import { useWeeklyReports } from "@/hooks/useWeeklyReports";
-import { previewWeeklySummary, pushWeeklySummary, remindMissingReports } from "@/lib/api";
+import { previewWeeklySummary, pushTeacherReports, pushWeeklySummary } from "@/lib/api";
 import { PostMessage, Recipient } from "@/lib/schema";
 import { toast } from "sonner";
+
+type TeacherPushStage = "closed" | "confirm" | "reviewed";
 
 export default function WeeklyReportsPage() {
 	const { semester, currentWeek } = useCurrentSemester();
@@ -30,7 +41,49 @@ export default function WeeklyReportsPage() {
 	const [preview, setPreview] = useState<PostMessage | null>(null);
 	const [isPreviewing, setIsPreviewing] = useState(false);
 	const [isPushing, setIsPushing] = useState(false);
-	const [isReminding, setIsReminding] = useState(false);
+
+	const {
+		plan,
+		isLoading: isPlanLoading,
+		error: planError,
+		refetch: refetchPlan,
+	} = useTeacherPushPlan(activeWeek, semester?.id);
+	const [selectedTeachers, setSelectedTeachers] = useState<Set<string>>(new Set());
+	const [stage, setStage] = useState<TeacherPushStage>("closed");
+	const [isPushingTeachers, setIsPushingTeachers] = useState(false);
+
+	useEffect(() => {
+		if (!plan) return;
+		setSelectedTeachers(
+			new Set(
+				plan.teachers
+					.filter((teacher) => teacher.student_count > 0 && teacher.open_id)
+					.map((teacher) => teacher.name),
+			),
+		);
+	}, [plan]);
+
+	const selectableTeachers = useMemo(
+		() =>
+			plan
+				? plan.teachers.filter(
+						(teacher) => teacher.student_count > 0 && teacher.open_id,
+					)
+				: [],
+		[plan],
+	);
+	const allSelected =
+		selectableTeachers.length > 0 &&
+		selectableTeachers.every((teacher) => selectedTeachers.has(teacher.name));
+
+	const toggleTeacher = (name: string, checked: boolean) => {
+		setSelectedTeachers((prev) => {
+			const next = new Set(prev);
+			if (checked) next.add(name);
+			else next.delete(name);
+			return next;
+		});
+	};
 
 	const handlePreview = async () => {
 		setIsPreviewing(true);
@@ -41,22 +94,6 @@ export default function WeeklyReportsPage() {
 			toast.error(err instanceof Error ? err.message : "渲染总结失败。");
 		} finally {
 			setIsPreviewing(false);
-		}
-	};
-
-	const handleRemind = async () => {
-		setIsReminding(true);
-		try {
-			const response = await remindMissingReports(activeWeek, semester?.id);
-			if (response.sent === 0) {
-				toast.success(response.message ?? "本周所有人都已提交周报。");
-			} else {
-				toast.success(`已向 ${response.sent} 人发送催交消息。`);
-			}
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "发送催交失败。");
-		} finally {
-			setIsReminding(false);
 		}
 	};
 
@@ -80,6 +117,49 @@ export default function WeeklyReportsPage() {
 		}
 	};
 
+	const openTeacherPush = () => {
+		if (selectedTeachers.size === 0) {
+			toast.error("请至少选择一位老师。");
+			return;
+		}
+		setStage("confirm");
+	};
+
+	const sendToAdmin = async () => {
+		setIsPushingTeachers(true);
+		try {
+			await pushTeacherReports(
+				activeWeek,
+				{ teacher_names: [...selectedTeachers], audience: "admin" },
+				semester?.id,
+			);
+			toast.success("已把即将发送的内容发给管理员，请确认无误。");
+			setStage("reviewed");
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "发给管理员失败。");
+		} finally {
+			setIsPushingTeachers(false);
+		}
+	};
+
+	const sendToTeachers = async () => {
+		setIsPushingTeachers(true);
+		try {
+			const response = await pushTeacherReports(
+				activeWeek,
+				{ teacher_names: [...selectedTeachers], audience: "teachers" },
+				semester?.id,
+			);
+			toast.success(`已向 ${response.sent} 位老师提交推送任务。`);
+			setStage("closed");
+			refetchPlan();
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "推送给老师失败。");
+		} finally {
+			setIsPushingTeachers(false);
+		}
+	};
+
 	if (!semester) {
 		return (
 			<div className="mx-auto w-full max-w-4xl space-y-6 px-6 py-8">
@@ -93,7 +173,7 @@ export default function WeeklyReportsPage() {
 		<div className="mx-auto w-full max-w-4xl space-y-6 px-6 py-8">
 			<PageHeader
 				title="周报统计"
-				description="按周查看提交与缺交名单，一键催交或推送总结。"
+				description="按周查看提交情况，推送总结或把周报链接发给各位老师。"
 				actions={
 					<div className="flex items-center gap-2">
 						<Label htmlFor="week" className="text-sm whitespace-nowrap">
@@ -126,49 +206,12 @@ export default function WeeklyReportsPage() {
 							已提交 {stats.submitted_count} 人，未提交 {stats.missing_count} 人。
 						</CardDescription>
 					</CardHeader>
-					<CardContent>
-						<Tabs defaultValue="submitted">
-							<TabsList>
-								<TabsTrigger value="submitted">已提交</TabsTrigger>
-								<TabsTrigger value="missing">未提交</TabsTrigger>
-							</TabsList>
-							<TabsContent value="submitted">
-								{stats.submitted.length === 0 ? (
-									<p className="text-sm text-muted-foreground">本周还没有人提交。</p>
-								) : (
-									<ul className="space-y-2 text-sm">
-										{stats.submitted.map((report) => (
-											<li key={report.id} className="flex items-center gap-2">
-												<span className="font-medium">{report.member_name}</span>
-												{report.doc_link ? (
-													<a
-														href={report.doc_link}
-														target="_blank"
-														rel="noreferrer"
-														className="text-blue-600 hover:underline dark:text-blue-400"
-													>
-														查看文档
-													</a>
-												) : (
-													<span className="text-xs text-muted-foreground">无链接</span>
-												)}
-											</li>
-										))}
-									</ul>
-								)}
-							</TabsContent>
-							<TabsContent value="missing">
-								{stats.missing.length === 0 ? (
-									<p className="text-sm text-green-600 dark:text-green-400">
-										本周所有人都已提交周报。
-									</p>
-								) : (
-									<p className="text-sm">
-										{stats.missing.map((member) => member.name).join("、")}
-									</p>
-								)}
-							</TabsContent>
-						</Tabs>
+					<CardContent className="space-y-4">
+						<Button variant="outline" onClick={handlePreview} disabled={isPreviewing}>
+							{isPreviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+							预览总结
+						</Button>
+						{preview ? <MessagePreview message={preview} /> : null}
 					</CardContent>
 				</Card>
 			) : null}
@@ -185,20 +228,10 @@ export default function WeeklyReportsPage() {
 
 			<Card>
 				<CardHeader>
-					<CardTitle>催交与总结推送</CardTitle>
-					<CardDescription>催交会私聊每位缺交成员，总结推送到指定群。</CardDescription>
+					<CardTitle>总结推送</CardTitle>
+					<CardDescription>把本周总结推送到指定的群或成员。</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<div className="flex flex-wrap gap-2">
-						<Button variant="outline" onClick={handleRemind} disabled={isReminding}>
-							{isReminding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-							催交未提交成员
-						</Button>
-						<Button variant="outline" onClick={handlePreview} disabled={isPreviewing}>
-							{isPreviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-							预览总结
-						</Button>
-					</div>
 					<div className="flex flex-col gap-3 sm:flex-row sm:items-end">
 						<div className="flex-1 space-y-2">
 							<Label>接收者</Label>
@@ -213,9 +246,159 @@ export default function WeeklyReportsPage() {
 							推送总结
 						</Button>
 					</div>
-					{preview ? <MessagePreview message={preview} /> : null}
 				</CardContent>
 			</Card>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>推送给老师</CardTitle>
+					<CardDescription>
+						把本周周报链接与组内每位在读学生的周报链接，私聊发给选中的老师。
+					</CardDescription>
+				</CardHeader>
+				<CardContent className="space-y-4">
+					{planError ? <p className="text-sm text-destructive">{planError.message}</p> : null}
+					{isPlanLoading ? (
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<Loader2 className="h-4 w-4 animate-spin" />
+							正在统计各老师的学生...
+						</div>
+					) : !plan || plan.teachers.length === 0 ? (
+						<EmptyState
+							title="还没有老师名单"
+							description={`老师名单来自通讯录的 ${plan?.teacher_department ?? "Tenure"} 部门，请先在人员管理页同步人员。`}
+						/>
+					) : (
+						<>
+							<div className="flex items-center gap-2 border-b pb-3">
+								<Checkbox
+									id="select-all-teachers"
+									checked={allSelected}
+									onCheckedChange={(checked) =>
+										setSelectedTeachers(
+											checked === true
+												? new Set(selectableTeachers.map((teacher) => teacher.name))
+												: new Set(),
+										)
+									}
+								/>
+								<Label htmlFor="select-all-teachers" className="text-sm">
+									全选（{selectedTeachers.size}/{selectableTeachers.length}）
+								</Label>
+							</div>
+							<ul className="space-y-3">
+								{plan.teachers.map((teacher) => {
+									const disabled = teacher.student_count === 0 || !teacher.open_id;
+									const note = !teacher.open_id
+										? "缺少飞书账号"
+										: teacher.student_count === 0
+											? "无在读学生"
+											: `已提交 ${teacher.submitted_count} / ${teacher.student_count}`;
+									return (
+										<li key={teacher.name} className="flex items-center gap-3">
+											<Checkbox
+												id={`teacher-${teacher.name}`}
+												checked={selectedTeachers.has(teacher.name)}
+												disabled={disabled}
+												onCheckedChange={(checked) =>
+													toggleTeacher(teacher.name, checked === true)
+												}
+											/>
+											<Label
+												htmlFor={`teacher-${teacher.name}`}
+												className="flex flex-1 items-center justify-between gap-2 text-sm"
+											>
+												<span className="font-medium">{teacher.name}</span>
+												<span className="text-xs text-muted-foreground">{note}</span>
+											</Label>
+										</li>
+									);
+								})}
+							</ul>
+							<Button onClick={openTeacherPush} disabled={isPushingTeachers}>
+								{isPushingTeachers ? (
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								) : (
+									<Send className="mr-2 h-4 w-4" />
+								)}
+								推送给老师
+							</Button>
+						</>
+					)}
+				</CardContent>
+			</Card>
+
+			<AlertDialog
+				open={stage === "confirm"}
+				onOpenChange={(open) => {
+					if (!open && !isPushingTeachers) setStage("closed");
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>确认推送给老师</AlertDialogTitle>
+						<AlertDialogDescription>
+							即将把本周周报链接发给选中的 {selectedTeachers.size} 位老师。可先发给管理员核对，避免推送出错。
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => setStage("closed")}
+							disabled={isPushingTeachers}
+						>
+							取消
+						</Button>
+						<Button
+							variant="outline"
+							onClick={sendToAdmin}
+							disabled={isPushingTeachers || !plan?.admin_configured}
+						>
+							{isPushingTeachers ? (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							) : null}
+							先发给管理员
+						</Button>
+						<Button onClick={sendToTeachers} disabled={isPushingTeachers}>
+							{isPushingTeachers ? (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							) : null}
+							确认
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
+
+			<AlertDialog
+				open={stage === "reviewed"}
+				onOpenChange={(open) => {
+					if (!open && !isPushingTeachers) setStage("closed");
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>请确认无误</AlertDialogTitle>
+						<AlertDialogDescription>
+							已把即将发送给老师的内容发给管理员。确认后将直接发送给选中的 {selectedTeachers.size} 位老师。
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					<AlertDialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => setStage("closed")}
+							disabled={isPushingTeachers}
+						>
+							取消
+						</Button>
+						<Button onClick={sendToTeachers} disabled={isPushingTeachers}>
+							{isPushingTeachers ? (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							) : null}
+							确认
+						</Button>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 		</div>
 	);
 }

@@ -1,5 +1,6 @@
 """Member master data queries."""
 
+import os
 from typing import List, Optional
 from uuid import UUID
 
@@ -8,6 +9,22 @@ from app.database.models import Member
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
+# Enrollment status that counts as "currently enrolled"; used to scope the
+# weekly-report teacher push to active students.
+ENROLLED_STATUS = "在读"
+
+# The lab's teachers all sit in this address-book department, so the weekly
+# report reaches them without any manual roster. ``Member.department`` is filled
+# by the member sync from the address-book department tree.
+DEFAULT_TEACHER_DEPARTMENT = "Tenure"
+
+
+def teacher_department_name() -> str:
+    return (
+        os.getenv("FEISHU_TEACHER_DEPARTMENT_NAME", "").strip()
+        or DEFAULT_TEACHER_DEPARTMENT
+    )
 
 
 class MemberCreate(BaseModel):
@@ -151,6 +168,32 @@ class CRUDMember(CRUDBase[Member, MemberCreate, MemberUpdate]):
             .order_by(Member.name)
             .all()
         )
+
+    def list_enrolled(self, db: Session) -> List[Member]:
+        """Students currently enrolled, grouped by advisor downstream."""
+        return (
+            db.query(Member)
+            .filter(Member.enrollment_status == ENROLLED_STATUS)
+            .order_by(Member.name)
+            .all()
+        )
+
+    def list_by_department(self, db: Session, *, department: str) -> List[Member]:
+        """Active members of one address-book department, by name."""
+        return (
+            db.query(Member)
+            .filter(Member.department == department, Member.is_active.is_(True))
+            .order_by(Member.name)
+            .all()
+        )
+
+    def list_teachers(self, db: Session) -> List[Member]:
+        """The lab's teachers: active members of the teacher department.
+
+        The roster follows the address book instead of a hand-maintained list,
+        so a personnel change needs no configuration edit.
+        """
+        return self.list_by_department(db, department=teacher_department_name())
 
 
 member = CRUDMember(Member)

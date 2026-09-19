@@ -57,6 +57,8 @@
 
 `FEISHU_ATTENDANCE_GROUP_NAME`（默认 `SMC考勤`）指定考勤组名称。同步人员时用它确定 `need_attendance`，周报统计用它确定「应提交」集合。
 
+`FEISHU_TEACHER_DEPARTMENT_NAME`（默认 `Tenure`）指定老师所在的通讯录部门。周报的「推送给老师」按同步下来的 `member.department` 取老师名单，不单独维护花名册；部门改名后同步一次人员即可。
+
 如果应用没有考勤权限，`sync_members` 会跳过考勤组查询并继续（记一条 warning），此时 `need_attendance` 全部为 `false`，周报统计会没有「应提交」名单。落地考勤模块前请先确认权限与测试数据。
 
 ## 6. 排查

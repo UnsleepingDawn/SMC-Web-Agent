@@ -17,6 +17,8 @@ import type {
 	Semester,
 	SyncRun,
 	SyncTask,
+	TeacherPushPlan,
+	WeeklyPushConfig,
 	WeeklyReportStats,
 } from '@/lib/schema';
 
@@ -251,16 +253,26 @@ export function previewWeeklySummary(
     return fetchFromApi(`/api/weekly-reports/summary?${query.toString()}`);
 }
 
-export function remindMissingReports(
+export function getTeacherPushPlan(
     week: number,
     semesterId?: string,
-    message?: string,
-): Promise<{ sent: number; tasks?: { member: string; task_id: string }[]; message?: string }> {
+): Promise<TeacherPushPlan> {
     const query = new URLSearchParams({ week: String(week) });
     if (semesterId) query.set('semester_id', semesterId);
-    if (message) query.set('message', message);
-    return fetchFromApi(`/api/weekly-reports/remind?${query.toString()}`, {
+    return fetchFromApi(`/api/weekly-reports/teacher-push?${query.toString()}`);
+}
+
+/** `audience: 'admin'` is the dry run that reaches only the admin. */
+export function pushTeacherReports(
+    week: number,
+    payload: { teacher_names: string[]; audience: 'teachers' | 'admin' },
+    semesterId?: string,
+): Promise<{ sent: number; audience: string; teachers: string[]; skipped: string[] }> {
+    const query = new URLSearchParams({ week: String(week) });
+    if (semesterId) query.set('semester_id', semesterId);
+    return fetchFromApi(`/api/weekly-reports/teacher-push?${query.toString()}`, {
         method: 'POST',
+        body: JSON.stringify(payload),
     });
 }
 
@@ -322,6 +334,19 @@ export function saveFeishuConfig(payload: {
     app_secret: string;
 }): Promise<FeishuConfig> {
     return fetchFromApi('/api/settings/feishu', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+    });
+}
+
+export function getWeeklyPushConfig(): Promise<WeeklyPushConfig> {
+    return fetchFromApi('/api/settings/weekly-push');
+}
+
+export function saveWeeklyPushConfig(payload: {
+    admin_open_id: string;
+}): Promise<WeeklyPushConfig> {
+    return fetchFromApi('/api/settings/weekly-push', {
         method: 'PUT',
         body: JSON.stringify(payload),
     });
