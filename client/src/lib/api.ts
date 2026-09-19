@@ -18,7 +18,9 @@ import type {
 	SyncRun,
 	SyncTask,
 	TeacherPushPlan,
+	PushTeacherResult,
 	WeeklyPushConfig,
+	WeeklyPushDraft,
 	WeeklyReportStats,
 } from '@/lib/schema';
 
@@ -267,7 +269,7 @@ export function pushTeacherReports(
     week: number,
     payload: { teacher_names: string[]; audience: 'teachers' | 'admin' },
     semesterId?: string,
-): Promise<{ sent: number; audience: string; teachers: string[]; skipped: string[] }> {
+): Promise<PushTeacherResult> {
     const query = new URLSearchParams({ week: String(week) });
     if (semesterId) query.set('semester_id', semesterId);
     return fetchFromApi(`/api/weekly-reports/teacher-push?${query.toString()}`, {
@@ -289,6 +291,25 @@ export function pushWeeklySummary(
     });
 }
 
+/** The signed-in user's last teacher selection for the semester. */
+export function getWeeklyPushDraft(
+    semesterId: string,
+): Promise<{ draft: WeeklyPushDraft | null }> {
+    const query = new URLSearchParams({ semester_id: semesterId });
+    return fetchFromApi(`/api/weekly-reports/push-draft?${query.toString()}`);
+}
+
+export function saveWeeklyPushDraft(payload: {
+    semester_id: string;
+    teacher_names: string[];
+    expanded_teachers: string[];
+}): Promise<{ draft: WeeklyPushDraft | null }> {
+    return fetchFromApi('/api/weekly-reports/push-draft', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+    });
+}
+
 /* ------------------------------------------------------------ notifications */
 
 export function getNotifications(limit = 50): Promise<{ notifications: Notification[] }> {
@@ -300,6 +321,54 @@ export function searchRecipients(search = '', limit = 20): Promise<{ recipients:
     const query = new URLSearchParams({ limit: String(limit) });
     if (search.trim()) query.set('search', search.trim());
     return fetchFromApi(`/api/notifications/recipients?${query.toString()}`);
+}
+
+/** Statuses for a batch of notification ids. */
+export function getNotificationStatuses(
+    ids: string[],
+): Promise<{ notifications: Notification[] }> {
+    const query = new URLSearchParams({ ids: ids.join(',') });
+    return fetchFromApi(`/api/notifications/statuses?${query.toString()}`);
+}
+
+interface WaitForNotificationsResult {
+    settled: Notification[];
+    timedOutIds: string[];
+}
+
+/**
+ * Poll until every notification settles (sent or failed) or the timeout hits.
+ * The Feishu call happens in the worker, so the POST response cannot tell us
+ * whether the message actually went out.
+ */
+export async function waitForNotifications(
+    ids: string[],
+    { intervalMs = 2000, timeoutMs = 30000 }: { intervalMs?: number; timeoutMs?: number } = {},
+): Promise<WaitForNotificationsResult> {
+    if (ids.length === 0) return { settled: [], timedOutIds: [] };
+    const deadline = Date.now() + timeoutMs;
+    const settledById = new Map<string, Notification>();
+
+    for (;;) {
+        try {
+            const response = await getNotificationStatuses(ids);
+            for (const record of response.notifications ?? []) {
+                if (record.status === 'sent' || record.status === 'failed') {
+                    settledById.set(record.id, record);
+                }
+            }
+        } catch (error) {
+            console.error('轮询推送状态失败', error);
+        }
+        if (settledById.size === ids.length) break;
+        if (Date.now() >= deadline) break;
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+
+    return {
+        settled: [...settledById.values()],
+        timedOutIds: ids.filter((id) => !settledById.has(id)),
+    };
 }
 
 /* --------------------------------------------------------------------- sync */

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
+from uuid import UUID
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.attendance_crud import attendance_group as attendance_group_crud
@@ -88,6 +89,26 @@ def list_notifications(
     db: Session = Depends(get_db),
 ):
     rows = notification_crud.list_recent(db, limit=min(limit, 200))
+    return {"notifications": [row.to_dict() for row in rows]}
+
+
+@notification_router.get("/statuses")
+def list_notification_statuses(
+    ids: str = "",
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    """Statuses for a batch of ids, so the sender can confirm async results."""
+    parsed: List[UUID] = []
+    for raw in ids.split(","):
+        text = raw.strip()
+        if not text:
+            continue
+        try:
+            parsed.append(UUID(text))
+        except ValueError:
+            continue
+    rows = notification_crud.list_by_ids(db, ids=parsed)
     return {"notifications": [row.to_dict() for row in rows]}
 
 

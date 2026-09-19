@@ -374,6 +374,31 @@ class GroupMeetingDraft(Base):
     meeting_periods = Column(JSONB, nullable=False, default=list)
 
 
+class WeeklyPushDraft(Base):
+    """One user's last teacher selection for the weekly-report push."""
+
+    __tablename__ = "weekly_push_drafts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "semester_id", name="uq_weekly_push_draft"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    semester_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("semesters.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    teacher_names = Column(JSONB, nullable=False, default=list)
+    expanded_teachers = Column(JSONB, nullable=False, default=list)
+
+
 class ScheduleEntry(Base):
     """A course slot that exempts a member from attendance requirements."""
 

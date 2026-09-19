@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from app.auth.dependencies import get_required_user
@@ -17,6 +17,7 @@ from app.database.crud.notification_crud import (
 )
 from app.database.crud.semester_crud import semester as semester_crud
 from app.database.crud.weekly_report_crud import (
+    weekly_push_draft as weekly_push_draft_crud,
     weekly_report as weekly_report_crud,
 )
 from app.database.database import get_db
@@ -25,7 +26,7 @@ from app.helpers.feishu_jobs import feishu_jobs
 from app.helpers.runtime_config import get_weekly_push_admin_open_id
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,12 @@ class TeacherPushRequest(BaseModel):
     # "teachers" sends to each teacher; "admin" sends the same bodies to the
     # admin first, as a dry run.
     audience: str = "teachers"
+
+
+class PushDraftRequest(BaseModel):
+    semester_id: str
+    teacher_names: List[str] = Field(default_factory=list)
+    expanded_teachers: List[str] = Field(default_factory=list)
 
 
 def _resolve_semester(db: Session, semester_id: Optional[str]):
@@ -167,6 +174,57 @@ def teacher_push_plan(
     return _teacher_push_plan(db, db_semester, week)
 
 
+def _serialize_push_draft(draft) -> Optional[dict]:
+    if not draft:
+        return None
+    return {
+        "teacher_names": draft.teacher_names or [],
+        "expanded_teachers": draft.expanded_teachers or [],
+    }
+
+
+@weekly_report_router.get("/push-draft")
+def get_weekly_push_draft(
+    semester_id: str,
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    """The signed-in user's last teacher selection for this semester, if any."""
+    db_semester = _resolve_semester(db, semester_id)
+    draft = weekly_push_draft_crud.get_by(
+        db, user=current_user, semester_id=db_semester.id
+    )
+    return {"draft": _serialize_push_draft(draft)}
+
+
+@weekly_report_router.put("/push-draft")
+def save_weekly_push_draft(
+    payload: PushDraftRequest,
+    current_user: CurrentUser = Depends(get_required_user),
+    db: Session = Depends(get_db),
+):
+    """Remember the current teacher selection so the next visit restores it."""
+    db_semester = _resolve_semester(db, payload.semester_id)
+    draft = weekly_push_draft_crud.upsert(
+        db,
+        user=current_user,
+        semester_id=db_semester.id,
+        teacher_names=[
+            str(name).strip() for name in payload.teacher_names if str(name).strip()
+        ],
+        expanded_teachers=[
+            str(name).strip()
+            for name in payload.expanded_teachers
+            if str(name).strip()
+        ],
+    )
+    if not draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="保存老师推送草稿失败"
+        )
+    return {"draft": _serialize_push_draft(draft)}
+
+
 @weekly_report_router.post("/teacher-push")
 def push_to_teachers(
     week: int,
@@ -200,15 +258,17 @@ def push_to_teachers(
     selected = set(payload.teacher_names)
 
     sent: List[str] = []
-    skipped: List[str] = []
+    failed: List[Dict[str, str]] = []
+    skipped: List[Dict[str, str]] = []
+    notifications: List[Dict[str, str]] = []
     for teacher in plan["teachers"]:
         if teacher["name"] not in selected:
             continue
         if teacher["student_count"] == 0:
-            skipped.append(teacher["name"])
+            skipped.append({"name": teacher["name"], "reason": "无在读学生"})
             continue
         if not teacher["open_id"]:
-            skipped.append(teacher["name"])
+            skipped.append({"name": teacher["name"], "reason": "缺少飞书账号"})
             continue
 
         for_admin = payload.audience == "admin"
@@ -236,22 +296,39 @@ def push_to_teachers(
         )
         if not record:
             logger.warning("Failed to create notification for %s", teacher["name"])
+            failed.append({"name": teacher["name"], "reason": "创建推送记录失败"})
             continue
 
-        feishu_jobs.send_message(
-            notification_id=record.id,
-            receive_id=receive_id,
-            msg_type="post",
-            title=message["zh_cn"]["title"],
-            content=message["zh_cn"]["content"],
-        )
+        try:
+            feishu_jobs.send_message(
+                notification_id=record.id,
+                receive_id=receive_id,
+                msg_type="post",
+                title=message["zh_cn"]["title"],
+                content=message["zh_cn"]["content"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Do not leave the record pending forever; the jobs webhook would
+            # have marked it failed, but we never reached the worker.
+            logger.error(
+                "Failed to enqueue message for %s: %s", teacher["name"], exc, exc_info=True
+            )
+            notification_crud.mark_failed(db, notification=record, error=str(exc))
+            failed.append({"name": teacher["name"], "reason": str(exc)})
+            continue
+
         sent.append(teacher["name"])
+        notifications.append(
+            {"name": teacher["name"], "notification_id": str(record.id)}
+        )
 
     return {
         "sent": len(sent),
         "audience": payload.audience,
         "teachers": sent,
+        "failed": failed,
         "skipped": skipped,
+        "notifications": notifications,
     }
 
 

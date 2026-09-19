@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronRight, Loader2, Send } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, ChevronRight, Loader2, Send } from "lucide-react";
 import {
 	AlertDialog,
 	AlertDialogContent,
@@ -10,6 +10,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,9 +30,21 @@ import { SyncPanel } from "@/components/sync/SyncPanel";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useSemesters } from "@/hooks/useSemesters";
 import { useTeacherPushPlan } from "@/hooks/useTeacherPushPlan";
+import { useWeeklyPushDraft } from "@/hooks/useWeeklyPushDraft";
 import { useWeeklyReports } from "@/hooks/useWeeklyReports";
-import { previewWeeklySummary, pushTeacherReports, pushWeeklySummary } from "@/lib/api";
-import { PostMessage, Recipient, TeacherPushStudent } from "@/lib/schema";
+import {
+	previewWeeklySummary,
+	pushTeacherReports,
+	pushWeeklySummary,
+	waitForNotifications,
+} from "@/lib/api";
+import {
+	PostMessage,
+	PushTeacherIssue,
+	PushTeacherResult,
+	Recipient,
+	TeacherPushStudent,
+} from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -45,7 +58,16 @@ function StudentStatus({ student }: { student: TeacherPushStudent }) {
 				variant="secondary"
 				className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"
 			>
-				已提交（飞书链接）
+				已提交（
+				<a
+					href={student.doc_link}
+					target="_blank"
+					rel="noreferrer"
+					className="text-inherit underline underline-offset-2"
+				>
+					飞书链接
+				</a>
+				）
 			</Badge>
 		);
 	}
@@ -94,17 +116,53 @@ export default function WeeklyReportsPage() {
 	const [expandedTeachers, setExpandedTeachers] = useState<Set<string>>(new Set());
 	const [stage, setStage] = useState<TeacherPushStage>("closed");
 	const [isPushingTeachers, setIsPushingTeachers] = useState(false);
+	const [pushIssues, setPushIssues] = useState<PushTeacherIssue[]>([]);
+	const [isCheckingResults, setIsCheckingResults] = useState(false);
+	const { draft, isLoading: isDraftLoading, save: saveDraft } = useWeeklyPushDraft(
+		semester?.id ?? null,
+	);
+	const appliedDraftFor = useRef<string | null>(null);
 
+	// Restore the last selection once per semester, so a sync or a refetch of the
+	// plan never resets what the user picked.
 	useEffect(() => {
-		if (!plan) return;
-		setSelectedTeachers(
-			new Set(
-				plan.teachers
-					.filter((teacher) => teacher.student_count > 0 && teacher.open_id)
-					.map((teacher) => teacher.name),
-			),
+		const semesterId = semester?.id;
+		if (!semesterId || !plan || isDraftLoading) return;
+		if (appliedDraftFor.current === semesterId) return;
+		appliedDraftFor.current = semesterId;
+
+		const selectable = plan.teachers.filter(
+			(teacher) => teacher.student_count > 0 && teacher.open_id,
 		);
-	}, [plan]);
+		if (!draft) {
+			setSelectedTeachers(new Set(selectable.map((teacher) => teacher.name)));
+			setExpandedTeachers(new Set());
+			return;
+		}
+		const selectableNames = new Set(selectable.map((teacher) => teacher.name));
+		const known = new Set(plan.teachers.map((teacher) => teacher.name));
+		setSelectedTeachers(
+			new Set(draft.teacher_names.filter((name) => selectableNames.has(name))),
+		);
+		setExpandedTeachers(
+			new Set(draft.expanded_teachers.filter((name) => known.has(name))),
+		);
+	}, [semester?.id, plan, draft, isDraftLoading]);
+
+	// Persist later edits, debounced so dragging through the list is one write.
+	useEffect(() => {
+		const semesterId = semester?.id;
+		if (!semesterId || appliedDraftFor.current !== semesterId) return;
+		const timer = setTimeout(() => {
+			saveDraft({
+				teacher_names: [...selectedTeachers],
+				expanded_teachers: [...expandedTeachers],
+			}).catch((error) => {
+				console.error("保存老师推送草稿失败", error);
+			});
+		}, 500);
+		return () => clearTimeout(timer);
+	}, [semester?.id, selectedTeachers, expandedTeachers, saveDraft]);
 
 	const selectableTeachers = useMemo(
 		() =>
@@ -175,26 +233,95 @@ export default function WeeklyReportsPage() {
 		if (preview) await loadPreview();
 	}, [refetch, refetchPlan, loadPreview, preview]);
 
+	/**
+	 * The POST only enqueues; the Feishu call happens in the worker. Turn the
+	 * immediate outcome into issues, then wait for the async results.
+	 */
+	const collectPushIssues = useCallback(
+		async (response: PushTeacherResult): Promise<PushTeacherIssue[]> => {
+			const issues: PushTeacherIssue[] = [
+				...response.failed.map(
+					(item): PushTeacherIssue => ({
+						name: item.name,
+						reason: item.reason,
+						kind: "failed",
+					}),
+				),
+				...response.skipped.map(
+					(item): PushTeacherIssue => ({
+						name: item.name,
+						reason: item.reason,
+						kind: "skipped",
+					}),
+				),
+			];
+
+			const ids = response.notifications.map((item) => item.notification_id);
+			if (ids.length === 0) return issues;
+
+			const nameById = new Map(
+				response.notifications.map((item) => [item.notification_id, item.name]),
+			);
+			setIsCheckingResults(true);
+			try {
+				const { settled, timedOutIds } = await waitForNotifications(ids);
+				for (const record of settled) {
+					if (record.status === "failed") {
+						issues.push({
+							name: nameById.get(record.id) ?? record.id,
+							reason: record.error || "飞书发送失败",
+							kind: "failed",
+						});
+					}
+				}
+				for (const id of timedOutIds) {
+					issues.push({
+						name: nameById.get(id) ?? id,
+						reason: "发送结果确认超时，请稍后在推送历史查看",
+						kind: "timeout",
+					});
+				}
+			} finally {
+				setIsCheckingResults(false);
+			}
+			return issues;
+		},
+		[],
+	);
+
 	const openTeacherPush = () => {
 		if (selectedTeachers.size === 0) {
 			toast.error("请至少选择一位老师。");
 			return;
 		}
+		setPushIssues([]);
 		setStage("confirm");
 	};
 
 	const sendToAdmin = async () => {
 		setIsPushingTeachers(true);
+		setPushIssues([]);
 		try {
-			await pushTeacherReports(
+			const response = await pushTeacherReports(
 				activeWeek,
 				{ teacher_names: [...selectedTeachers], audience: "admin" },
 				semester?.id,
 			);
-			toast.success("已把即将发送的内容发给管理员，请确认无误。");
-			setStage("reviewed");
+			const issues = await collectPushIssues(response);
+			setPushIssues(issues);
+			if (issues.length > 0) {
+				// Close the dialog so the red summary in the card is visible.
+				toast.error(`有 ${issues.length} 条内容没有发给管理员。`);
+				setStage("closed");
+			} else {
+				toast.success("已把即将发送的内容发给管理员，请确认无误。");
+				setStage("reviewed");
+			}
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "发给管理员失败。");
+			const reason = err instanceof Error ? err.message : "发给管理员失败。";
+			setPushIssues([{ name: "管理员", reason, kind: "failed" }]);
+			toast.error(reason);
+			setStage("closed");
 		} finally {
 			setIsPushingTeachers(false);
 		}
@@ -202,17 +329,34 @@ export default function WeeklyReportsPage() {
 
 	const sendToTeachers = async () => {
 		setIsPushingTeachers(true);
+		setPushIssues([]);
 		try {
 			const response = await pushTeacherReports(
 				activeWeek,
 				{ teacher_names: [...selectedTeachers], audience: "teachers" },
 				semester?.id,
 			);
-			toast.success(`已向 ${response.sent} 位老师提交推送任务。`);
 			setStage("closed");
+			// Write the selection back on submit, mirroring the planner draft.
+			saveDraft({
+				teacher_names: [...selectedTeachers],
+				expanded_teachers: [...expandedTeachers],
+			}).catch((saveError) => {
+				console.error("保存老师推送草稿失败", saveError);
+			});
 			refetchPlan();
+
+			const issues = await collectPushIssues(response);
+			setPushIssues(issues);
+			if (issues.length > 0) {
+				toast.error(`有 ${issues.length} 位老师没有发送成功。`);
+			} else {
+				toast.success(`已向 ${response.sent} 位老师发送周报汇总。`);
+			}
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "推送给老师失败。");
+			const reason = err instanceof Error ? err.message : "推送给老师失败。";
+			setPushIssues([{ name: "推送请求", reason, kind: "failed" }]);
+			toast.error(reason);
 		} finally {
 			setIsPushingTeachers(false);
 		}
@@ -315,6 +459,21 @@ export default function WeeklyReportsPage() {
 					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
+					{pushIssues.length > 0 ? (
+						<Alert variant="destructive">
+							<AlertCircle className="h-4 w-4" />
+							<AlertTitle>有 {pushIssues.length} 位老师未发送成功</AlertTitle>
+							<AlertDescription>
+								<ul className="list-disc space-y-1 pl-4">
+									{pushIssues.map((issue) => (
+										<li key={`${issue.kind}-${issue.name}-${issue.reason}`}>
+											{issue.name}：{issue.reason}
+										</li>
+									))}
+								</ul>
+							</AlertDescription>
+						</Alert>
+					) : null}
 					{planError ? <p className="text-sm text-destructive">{planError.message}</p> : null}
 					{isPlanLoading ? (
 						<div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -396,27 +555,21 @@ export default function WeeklyReportsPage() {
 															没有在读学生。
 														</p>
 													) : (
-														<ul className="space-y-1 pt-2 pl-9">
-															{teacher.students.map((student) => (
-																<li
-																	key={student.name}
-																	className="flex flex-wrap items-center gap-2 text-sm"
-																>
-																	<span>{student.name}</span>
-																	{student.doc_link ? (
-																		<a
-																			href={student.doc_link}
-																			target="_blank"
-																			rel="noreferrer"
-																			className="text-xs text-blue-600 hover:underline dark:text-blue-400"
-																		>
-																			查看周报
-																		</a>
-																	) : null}
+													<ul className="space-y-1 pt-2 pl-9">
+														{teacher.students.map((student) => (
+															<li
+																key={student.name}
+																className="grid grid-cols-[4rem_1fr] items-center gap-2 text-sm"
+															>
+																<span className="truncate" title={student.name}>
+																	{student.name}
+																</span>
+																<span>
 																	<StudentStatus student={student} />
-																</li>
-															))}
-														</ul>
+																</span>
+															</li>
+														))}
+													</ul>
 													)}
 												</CollapsibleContent>
 											</Collapsible>
@@ -430,7 +583,7 @@ export default function WeeklyReportsPage() {
 								) : (
 									<Send className="mr-2 h-4 w-4" />
 								)}
-								推送给老师
+								{isCheckingResults ? "正在确认发送结果…" : "推送给老师"}
 							</Button>
 						</>
 					)}

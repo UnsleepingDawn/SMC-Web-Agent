@@ -165,13 +165,38 @@ export interface TeacherPushPlan {
 	teachers: TeacherPushGroup[];
 }
 
+/** The teacher selection the signed-in user last used for a semester. */
+export interface WeeklyPushDraft {
+	teacher_names: string[];
+	expanded_teachers: string[];
+}
+
+/** One teacher that did not get the message, with why. */
+export interface PushTeacherIssue {
+	name: string;
+	reason: string;
+	kind: "failed" | "skipped" | "timeout";
+}
+
+export interface PushTeacherResult {
+	audience: string;
+	sent: number;
+	teachers: string[];
+	failed: { name: string; reason: string }[];
+	skipped: { name: string; reason: string }[];
+	notifications: { name: string; notification_id: string }[];
+}
+
+export const NOTIFICATION_STATUSES = ["pending", "sent", "failed"] as const;
+export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
+
 export interface Notification {
 	id: string;
 	channel: string;
 	template_key: string;
 	target: string;
 	payload: Record<string, unknown>;
-	status: JobStatus;
+	status: NotificationStatus;
 	error: string | null;
 	sent_at: string | null;
 	created_at: string | null;

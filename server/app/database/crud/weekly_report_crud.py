@@ -4,7 +4,8 @@ from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
-from app.database.models import Member, WeeklyReport
+from app.database.models import Member, WeeklyPushDraft, WeeklyReport
+from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -52,3 +53,46 @@ class CRUDWeeklyReport(CRUDBase[WeeklyReport, WeeklyReportCreate, WeeklyReportUp
 
 
 weekly_report = CRUDWeeklyReport(WeeklyReport)
+
+
+class WeeklyPushDraftCreate(BaseModel):
+    semester_id: UUID
+    user_id: Optional[UUID] = None
+    teacher_names: List[str] = []
+    expanded_teachers: List[str] = []
+
+
+class CRUDWeeklyPushDraft(
+    CRUDBase[WeeklyPushDraft, WeeklyPushDraftCreate, BaseModel]
+):
+    def upsert(
+        self,
+        db: Session,
+        *,
+        user: CurrentUser,
+        semester_id: UUID,
+        teacher_names: List[str],
+        expanded_teachers: List[str],
+    ) -> Optional[WeeklyPushDraft]:
+        """Replace the user's saved selection for the semester, creating it once."""
+        draft = self.get_by(db, user=user, semester_id=semester_id)
+        if not draft:
+            return self.create(
+                db,
+                user=user,
+                obj_in=WeeklyPushDraftCreate(
+                    semester_id=semester_id,
+                    teacher_names=teacher_names,
+                    expanded_teachers=expanded_teachers,
+                ),
+            )
+
+        draft.teacher_names = teacher_names
+        draft.expanded_teachers = expanded_teachers
+        db.add(draft)
+        db.commit()
+        db.refresh(draft)
+        return draft
+
+
+weekly_push_draft = CRUDWeeklyPushDraft(WeeklyPushDraft)

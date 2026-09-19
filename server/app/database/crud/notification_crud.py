@@ -45,6 +45,12 @@ class CRUDNotification(CRUDBase[Notification, NotificationCreate, NotificationUp
                 break
         return targets
 
+    def list_by_ids(self, db: Session, *, ids: List[Any]) -> List[Notification]:
+        """Fetch a batch of records by id, used to check async send results."""
+        if not ids:
+            return []
+        return db.query(Notification).filter(Notification.id.in_(ids)).all()
+
     def mark_sent(self, db: Session, *, notification: Notification) -> Notification:
         notification.status = "sent"
         notification.sent_at = datetime.now(timezone.utc)
