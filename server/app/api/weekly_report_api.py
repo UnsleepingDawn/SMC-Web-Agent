@@ -6,7 +6,6 @@ import logging
 from typing import List, Optional
 from uuid import UUID
 
-from app.api.attendance_api import build_daily_summary, build_seminar_summary
 from app.auth.dependencies import get_required_user
 from app.database.crud.member_crud import (
     member as member_crud,
@@ -32,23 +31,6 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 weekly_report_router = APIRouter()
-
-
-def _attendance_kwargs(db: Session, semester, week: int) -> dict:
-    """Attendance sections for the summary, or None when nothing was synced."""
-    daily = build_daily_summary(db, semester, week)
-    seminar = build_seminar_summary(db, semester, week)
-    has_daily = bool(daily["dates"])
-    has_seminar = bool(seminar["expected"])
-    return {
-        "absent_names": daily["absent_names"] if has_daily else None,
-        "late_names": daily["late_names"] if has_daily else None,
-        "attended_names": seminar["attended"] if has_seminar else None,
-        "not_attended_names": seminar["absent"] if has_seminar else None,
-        "leave_names": (
-            [row["member_name"] for row in seminar["leave"]] if has_seminar else None
-        ),
-    }
 
 
 class PushRequest(BaseModel):
@@ -116,7 +98,6 @@ def weekly_summary_preview(
         week=week,
         submitted_names=[row.member_name for row in submitted],
         missing_names=[row.name for row in missing],
-        **_attendance_kwargs(db, db_semester, week),
     )
     return {"payload": payload}
 
@@ -133,10 +114,10 @@ def _teacher_push_plan(db: Session, semester, week: int) -> dict:
     reports = weekly_report_crud.list_by_week(
         db, semester_id=semester.id, week=week
     )
-    links = {}
+    records = {}
     for row in reports:
         # First record wins, matching the submitted/missing split.
-        links.setdefault(row.member_name, row.doc_link)
+        records.setdefault(row.member_name, row)
 
     students_by_advisor: dict = {}
     for student in enrolled:
@@ -146,12 +127,14 @@ def _teacher_push_plan(db: Session, semester, week: int) -> dict:
     for teacher in teachers_rows:
         students = []
         for student in students_by_advisor.get(teacher.name, []):
-            submitted = student.name in links
+            record = records.get(student.name)
+            submitted = record is not None
             students.append(
                 {
                     "name": student.name,
-                    "doc_link": links.get(student.name) if submitted else None,
+                    "doc_link": record.doc_link if record else None,
                     "submitted": submitted,
+                    "has_attachment": bool(record and record.attachments),
                 }
             )
         teachers.append(
@@ -289,7 +272,6 @@ def push_weekly_summary(
         week=week,
         submitted_names=[row.member_name for row in submitted],
         missing_names=[row.name for row in missing],
-        **_attendance_kwargs(db, db_semester, week),
     )
 
     record = notification_crud.create(

@@ -11,7 +11,7 @@ interface UseSeminarsResult {
     refetch: () => Promise<void>;
 }
 
-export function useSeminars(semesterId?: string): UseSeminarsResult {
+export function useSeminars(semesterId?: string, refreshKey = 0): UseSeminarsResult {
     const [seminars, setSeminars] = useState<Seminar[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
@@ -32,7 +32,7 @@ export function useSeminars(semesterId?: string): UseSeminarsResult {
         } finally {
             setIsLoading(false);
         }
-    }, [semesterId]);
+    }, [semesterId, refreshKey]);
 
     useEffect(() => {
         fetchSeminars();

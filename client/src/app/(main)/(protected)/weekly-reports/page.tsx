@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Loader2, Send } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronRight, Loader2, Send } from "lucide-react";
 import {
 	AlertDialog,
 	AlertDialogContent,
@@ -10,9 +10,15 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -25,10 +31,46 @@ import { useSemesters } from "@/hooks/useSemesters";
 import { useTeacherPushPlan } from "@/hooks/useTeacherPushPlan";
 import { useWeeklyReports } from "@/hooks/useWeeklyReports";
 import { previewWeeklySummary, pushTeacherReports, pushWeeklySummary } from "@/lib/api";
-import { PostMessage, Recipient } from "@/lib/schema";
+import { PostMessage, Recipient, TeacherPushStudent } from "@/lib/schema";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 type TeacherPushStage = "closed" | "confirm" | "reviewed";
+
+/** One student's submission state as a colored badge. */
+function StudentStatus({ student }: { student: TeacherPushStudent }) {
+	if (student.doc_link) {
+		return (
+			<Badge
+				variant="secondary"
+				className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"
+			>
+				已提交（飞书链接）
+			</Badge>
+		);
+	}
+	if (student.has_attachment) {
+		return (
+			<Badge
+				variant="secondary"
+				className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+			>
+				已提交（文件）
+			</Badge>
+		);
+	}
+	if (student.submitted) {
+		return (
+			<Badge
+				variant="secondary"
+				className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300"
+			>
+				已提交
+			</Badge>
+		);
+	}
+	return <Badge variant="secondary">未提交</Badge>;
+}
 
 export default function WeeklyReportsPage() {
 	const { semester, currentWeek } = useCurrentSemester();
@@ -49,6 +91,7 @@ export default function WeeklyReportsPage() {
 		refetch: refetchPlan,
 	} = useTeacherPushPlan(activeWeek, semester?.id);
 	const [selectedTeachers, setSelectedTeachers] = useState<Set<string>>(new Set());
+	const [expandedTeachers, setExpandedTeachers] = useState<Set<string>>(new Set());
 	const [stage, setStage] = useState<TeacherPushStage>("closed");
 	const [isPushingTeachers, setIsPushingTeachers] = useState(false);
 
@@ -85,7 +128,16 @@ export default function WeeklyReportsPage() {
 		});
 	};
 
-	const handlePreview = async () => {
+	const toggleExpanded = (name: string) => {
+		setExpandedTeachers((prev) => {
+			const next = new Set(prev);
+			if (next.has(name)) next.delete(name);
+			else next.add(name);
+			return next;
+		});
+	};
+
+	const loadPreview = useCallback(async () => {
 		setIsPreviewing(true);
 		try {
 			const response = await previewWeeklySummary(activeWeek, semester?.id);
@@ -95,7 +147,7 @@ export default function WeeklyReportsPage() {
 		} finally {
 			setIsPreviewing(false);
 		}
-	};
+	}, [activeWeek, semester?.id]);
 
 	const handlePush = async () => {
 		if (!recipient) {
@@ -116,6 +168,12 @@ export default function WeeklyReportsPage() {
 			setIsPushing(false);
 		}
 	};
+
+	/** A finished sync can change every statistic on this page, so refresh them all. */
+	const handleSyncCompleted = useCallback(async () => {
+		await Promise.all([refetch(), refetchPlan()]);
+		if (preview) await loadPreview();
+	}, [refetch, refetchPlan, loadPreview, preview]);
 
 	const openTeacherPush = () => {
 		if (selectedTeachers.size === 0) {
@@ -193,6 +251,16 @@ export default function WeeklyReportsPage() {
 
 			{error ? <p className="text-sm text-destructive">{error.message}</p> : null}
 
+			<SyncPanel
+				semesters={semesters}
+				defaultSemesterId={semester.id}
+				defaultWeek={currentWeek}
+				tasks={["weekly_reports"]}
+				defaultTask="weekly_reports"
+				allowSyncAll
+				onCompleted={handleSyncCompleted}
+			/>
+
 			{isLoading ? (
 				<div className="flex items-center gap-2 text-sm text-muted-foreground">
 					<Loader2 className="h-4 w-4 animate-spin" />
@@ -206,33 +274,23 @@ export default function WeeklyReportsPage() {
 							已提交 {stats.submitted_count} 人，未提交 {stats.missing_count} 人。
 						</CardDescription>
 					</CardHeader>
-					<CardContent className="space-y-4">
-						<Button variant="outline" onClick={handlePreview} disabled={isPreviewing}>
-							{isPreviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-							预览总结
-						</Button>
-						{preview ? <MessagePreview message={preview} /> : null}
-					</CardContent>
 				</Card>
 			) : null}
 
-			<SyncPanel
-				semesters={semesters}
-				defaultSemesterId={semester.id}
-				defaultWeek={currentWeek}
-				tasks={["weekly_reports"]}
-				defaultTask="weekly_reports"
-				allowSyncAll
-				onCompleted={refetch}
-			/>
-
 			<Card>
 				<CardHeader>
-					<CardTitle>总结推送</CardTitle>
-					<CardDescription>把本周总结推送到指定的群或成员。</CardDescription>
+					<CardTitle>总结预览与推送</CardTitle>
+					<CardDescription>
+						预览本周周报提交情况的总结，确认无误后可直接推送到群或成员。
+					</CardDescription>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+					<Button variant="outline" onClick={loadPreview} disabled={isPreviewing}>
+						{isPreviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+						预览总结
+					</Button>
+					{preview ? <MessagePreview message={preview} /> : null}
+					<div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-end">
 						<div className="flex-1 space-y-2">
 							<Label>接收者</Label>
 							<RecipientPicker
@@ -294,23 +352,74 @@ export default function WeeklyReportsPage() {
 										: teacher.student_count === 0
 											? "无在读学生"
 											: `已提交 ${teacher.submitted_count} / ${teacher.student_count}`;
+									const expanded = expandedTeachers.has(teacher.name);
 									return (
-										<li key={teacher.name} className="flex items-center gap-3">
-											<Checkbox
-												id={`teacher-${teacher.name}`}
-												checked={selectedTeachers.has(teacher.name)}
-												disabled={disabled}
-												onCheckedChange={(checked) =>
-													toggleTeacher(teacher.name, checked === true)
-												}
-											/>
-											<Label
-												htmlFor={`teacher-${teacher.name}`}
-												className="flex flex-1 items-center justify-between gap-2 text-sm"
+										<li key={teacher.name}>
+											<Collapsible
+												open={expanded}
+												onOpenChange={() => toggleExpanded(teacher.name)}
 											>
-												<span className="font-medium">{teacher.name}</span>
-												<span className="text-xs text-muted-foreground">{note}</span>
-											</Label>
+												<div className="flex items-center gap-3">
+													<Checkbox
+														id={`teacher-${teacher.name}`}
+														checked={selectedTeachers.has(teacher.name)}
+														disabled={disabled}
+														onCheckedChange={(checked) =>
+															toggleTeacher(teacher.name, checked === true)
+														}
+													/>
+													<CollapsibleTrigger asChild>
+														<button
+															type="button"
+															className="flex items-center gap-1 rounded-sm p-1 hover:bg-muted"
+															aria-label={expanded ? "收起学生名单" : "展开学生名单"}
+														>
+															<ChevronRight
+																className={cn(
+																	"h-4 w-4 text-muted-foreground transition-transform",
+																	expanded && "rotate-90",
+																)}
+															/>
+														</button>
+													</CollapsibleTrigger>
+													<Label
+														htmlFor={`teacher-${teacher.name}`}
+														className="flex flex-1 items-center justify-between gap-2 text-sm"
+													>
+														<span className="font-medium">{teacher.name}</span>
+														<span className="text-xs text-muted-foreground">{note}</span>
+													</Label>
+												</div>
+												<CollapsibleContent>
+													{teacher.students.length === 0 ? (
+														<p className="pt-2 pl-9 text-xs text-muted-foreground">
+															没有在读学生。
+														</p>
+													) : (
+														<ul className="space-y-1 pt-2 pl-9">
+															{teacher.students.map((student) => (
+																<li
+																	key={student.name}
+																	className="flex flex-wrap items-center gap-2 text-sm"
+																>
+																	<span>{student.name}</span>
+																	{student.doc_link ? (
+																		<a
+																			href={student.doc_link}
+																			target="_blank"
+																			rel="noreferrer"
+																			className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+																		>
+																			查看周报
+																		</a>
+																	) : null}
+																	<StudentStatus student={student} />
+																</li>
+															))}
+														</ul>
+													)}
+												</CollapsibleContent>
+											</Collapsible>
 										</li>
 									);
 								})}

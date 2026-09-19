@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Loader2, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -15,10 +16,13 @@ import { useSemesters } from "@/hooks/useSemesters";
 export default function DashboardPage() {
 	const { semester, currentWeek, isLoading, error, refetch } = useCurrentSemester();
 	const { semesters, refetch: refetchSemesters } = useSemesters();
+	const [refreshKey, setRefreshKey] = useState(0);
 
 	const refreshAll = () => {
 		refetch();
 		refetchSemesters();
+		// The overview cards fetch independently, so nudge them to reload too.
+		setRefreshKey((value) => value + 1);
 	};
 
 	return (
@@ -53,11 +57,6 @@ export default function DashboardPage() {
 				/>
 			) : (
 				<div className="space-y-6">
-					<SemesterOverview semester={semester} currentWeek={currentWeek} />
-					<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-						<SeminarOverview semesterId={semester.id} currentWeek={currentWeek} />
-						<WeeklyReportOverview semesterId={semester.id} currentWeek={currentWeek} />
-					</div>
 					<SyncPanel
 						semesters={semesters}
 						defaultSemesterId={semester.id}
@@ -66,6 +65,19 @@ export default function DashboardPage() {
 						defaultTask={SYNC_ALL}
 						onCompleted={refreshAll}
 					/>
+					<SemesterOverview semester={semester} currentWeek={currentWeek} />
+					<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+						<SeminarOverview
+							semesterId={semester.id}
+							currentWeek={currentWeek}
+							refreshKey={refreshKey}
+						/>
+						<WeeklyReportOverview
+							semesterId={semester.id}
+							currentWeek={currentWeek}
+							refreshKey={refreshKey}
+						/>
+					</div>
 				</div>
 			)}
 		</div>

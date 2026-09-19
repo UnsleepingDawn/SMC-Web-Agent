@@ -144,6 +144,8 @@ export interface TeacherPushStudent {
 	name: string;
 	doc_link: string | null;
 	submitted: boolean;
+	/** Submitted with an attachment but without a document link. */
+	has_attachment: boolean;
 }
 
 export interface TeacherPushGroup {

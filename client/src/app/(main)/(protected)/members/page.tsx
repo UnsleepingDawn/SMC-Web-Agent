@@ -62,6 +62,18 @@ export default function MembersPage() {
 				}
 			/>
 
+			<SyncPanel
+				semesters={semesters}
+				defaultSemesterId={semester?.id}
+				defaultWeek={currentWeek}
+				tasks={["members"]}
+				defaultTask="members"
+				allowSyncAll
+				onCompleted={() => {
+					refetch();
+				}}
+			/>
+
 			<MemberFilterBar filters={options} value={filters} onChange={setFilters} />
 
 			{error ? <p className="text-sm text-destructive">{error.message}</p> : null}
@@ -74,18 +86,6 @@ export default function MembersPage() {
 			) : (
 				<MemberTable members={members} onEdit={setEditing} />
 			)}
-
-			<SyncPanel
-				semesters={semesters}
-				defaultSemesterId={semester?.id}
-				defaultWeek={currentWeek}
-				tasks={["members"]}
-				defaultTask="members"
-				allowSyncAll
-				onCompleted={() => {
-					refetch();
-				}}
-			/>
 
 			<MemberEditDialog
 				member={editing}

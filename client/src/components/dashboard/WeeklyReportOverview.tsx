@@ -9,10 +9,16 @@ import { useWeeklyReports } from "@/hooks/useWeeklyReports";
 interface WeeklyReportOverviewProps {
 	semesterId: string;
 	currentWeek: number | null;
+	/** Bumped by the parent after a sync to force a reload. */
+	refreshKey?: number;
 }
 
-export function WeeklyReportOverview({ semesterId, currentWeek }: WeeklyReportOverviewProps) {
-	const { stats, isLoading } = useWeeklyReports(currentWeek ?? 0, semesterId);
+export function WeeklyReportOverview({
+	semesterId,
+	currentWeek,
+	refreshKey = 0,
+}: WeeklyReportOverviewProps) {
+	const { stats, isLoading } = useWeeklyReports(currentWeek ?? 0, semesterId, refreshKey);
 
 	const total = stats ? stats.submitted_count + stats.missing_count : 0;
 	const percent = total === 0 ? 0 : Math.round(((stats?.submitted_count ?? 0) / total) * 100);

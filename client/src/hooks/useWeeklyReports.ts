@@ -14,6 +14,7 @@ interface UseWeeklyReportsResult {
 export function useWeeklyReports(
     week: number,
     semesterId?: string,
+    refreshKey = 0,
 ): UseWeeklyReportsResult {
     const [stats, setStats] = useState<WeeklyReportStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -35,7 +36,7 @@ export function useWeeklyReports(
         } finally {
             setIsLoading(false);
         }
-    }, [week, semesterId]);
+    }, [week, semesterId, refreshKey]);
 
     useEffect(() => {
         fetchStats();

@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Select,
 	SelectContent,
@@ -68,6 +67,16 @@ export default function SeminarsPage() {
 				}
 			/>
 
+			<SyncPanel
+				semesters={semesters}
+				defaultSemesterId={semester?.id}
+				defaultWeek={currentWeek}
+				tasks={["seminars"]}
+				defaultTask="seminars"
+				allowSyncAll
+				onCompleted={refetch}
+			/>
+
 			{error ? <p className="text-sm text-destructive">{error.message}</p> : null}
 
 			{isLoading ? (
@@ -84,8 +93,8 @@ export default function SeminarsPage() {
 					}
 					description={
 						activeWeekFilter === "__all__"
-							? "先同步飞书组会表，或在下方提交一次「组会安排」同步任务。"
-							: "可切换其他周次查看，或先在下方提交一次「组会安排」同步任务。"
+							? "先同步飞书组会表，或在上方提交一次「组会安排」同步任务。"
+							: "可切换其他周次查看，或先在上方提交一次「组会安排」同步任务。"
 					}
 				/>
 			) : (
@@ -101,24 +110,6 @@ export default function SeminarsPage() {
 					))}
 				</div>
 			)}
-
-			<Card>
-				<CardHeader>
-					<CardTitle>推送记录</CardTitle>
-					<CardDescription>每次推送都会记录在「推送历史」页面，可追踪成功与失败。</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<SyncPanel
-						semesters={semesters}
-						defaultSemesterId={semester?.id}
-						defaultWeek={currentWeek}
-						tasks={["seminars"]}
-						defaultTask="seminars"
-						allowSyncAll
-						onCompleted={refetch}
-					/>
-				</CardContent>
-			</Card>
 
 			<SeminarEditorDialog
 				seminar={editing}

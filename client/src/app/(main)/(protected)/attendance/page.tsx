@@ -176,17 +176,6 @@ export default function AttendancePage() {
 
 			{error ? <p className="text-sm text-destructive">{error.message}</p> : null}
 
-			<Card>
-				<CardHeader>
-					<CardTitle>考勤组</CardTitle>
-					<CardDescription>
-						{group
-							? `${group.group_name}（${group.members.length} 人）`
-							: "还没有同步考勤组，可在下方同步。"}
-					</CardDescription>
-				</CardHeader>
-			</Card>
-
 			<SyncPanel
 				semesters={semesters}
 				defaultSemesterId={semester.id}
@@ -202,6 +191,17 @@ export default function AttendancePage() {
 				allowSyncAll
 				onCompleted={refetch}
 			/>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>考勤组</CardTitle>
+					<CardDescription>
+						{group
+							? `${group.group_name}（${group.members.length} 人）`
+							: "还没有同步考勤组，可在上方同步。"}
+					</CardDescription>
+				</CardHeader>
+			</Card>
 
 			{isLoading ? (
 				<div className="flex items-center gap-2 text-sm text-muted-foreground">

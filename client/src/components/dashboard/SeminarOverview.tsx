@@ -9,6 +9,8 @@ import { Seminar, WEEKDAY_NAMES } from "@/lib/schema";
 interface SeminarOverviewProps {
 	semesterId: string;
 	currentWeek: number | null;
+	/** Bumped by the parent after a sync to force a reload. */
+	refreshKey?: number;
 }
 
 function upcoming(seminars: Seminar[], currentWeek: number | null): Seminar | null {
@@ -20,8 +22,12 @@ function upcoming(seminars: Seminar[], currentWeek: number | null): Seminar | nu
 	);
 }
 
-export function SeminarOverview({ semesterId, currentWeek }: SeminarOverviewProps) {
-	const { seminars, isLoading } = useSeminars(semesterId);
+export function SeminarOverview({
+	semesterId,
+	currentWeek,
+	refreshKey = 0,
+}: SeminarOverviewProps) {
+	const { seminars, isLoading } = useSeminars(semesterId, refreshKey);
 	const next = upcoming(seminars, currentWeek);
 
 	return (
