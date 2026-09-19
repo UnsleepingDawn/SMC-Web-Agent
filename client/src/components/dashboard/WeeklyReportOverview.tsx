@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { MissedBarChart } from "@/components/common/MissedBarChart";
+import { useWeeklyReportMissed } from "@/hooks/useWeeklyReportMissed";
 import { useWeeklyReports } from "@/hooks/useWeeklyReports";
 
 interface WeeklyReportOverviewProps {
@@ -19,6 +21,11 @@ export function WeeklyReportOverview({
 	refreshKey = 0,
 }: WeeklyReportOverviewProps) {
 	const { stats, isLoading } = useWeeklyReports(currentWeek ?? 0, semesterId, refreshKey);
+	const { summary: missed, isLoading: isMissedLoading } = useWeeklyReportMissed(
+		currentWeek ?? 0,
+		semesterId,
+		refreshKey,
+	);
 
 	const total = stats ? stats.submitted_count + stats.missing_count : 0;
 	const percent = total === 0 ? 0 : Math.round(((stats?.submitted_count ?? 0) / total) * 100);
@@ -59,6 +66,25 @@ export function WeeklyReportOverview({
 							<p className="text-sm text-green-600 dark:text-green-400">
 								本周所有人都已提交周报。
 							</p>
+						)}
+						{isMissedLoading ? (
+							<div className="flex items-center gap-2 text-xs text-muted-foreground">
+								<Loader2 className="h-3 w-3 animate-spin" />
+								正在统计缺交次数...
+							</div>
+						) : (
+							<MissedBarChart
+								height={72}
+								data={(missed?.chart ?? []).map((row) => ({
+									name: row.name,
+									missed: row.missed,
+									never: row.never_submitted,
+								}))}
+								emptyText="还没有缺交记录。"
+								unit="缺交"
+								neverLabel="从未提交"
+								missedLabel="提交过但有缺交"
+							/>
 						)}
 						<Link
 							href="/weekly-reports"

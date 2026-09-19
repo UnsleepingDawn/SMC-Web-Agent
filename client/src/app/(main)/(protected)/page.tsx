@@ -8,6 +8,8 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
 import { SemesterOverview } from "@/components/dashboard/SemesterOverview";
 import { SeminarOverview } from "@/components/dashboard/SeminarOverview";
+import { DailyAttendanceOverview } from "@/components/dashboard/DailyAttendanceOverview";
+import { SeminarAttendanceOverview } from "@/components/dashboard/SeminarAttendanceOverview";
 import { WeeklyReportOverview } from "@/components/dashboard/WeeklyReportOverview";
 import { SyncPanel, SYNC_ALL } from "@/components/sync/SyncPanel";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
@@ -29,7 +31,7 @@ export default function DashboardPage() {
 		<div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-8">
 			<PageHeader
 				title="仪表盘"
-				description="当前学期、本周组会与周报提交进度一览。"
+				description="当前学期、本周组会、周报进度与考勤统计一览。"
 				actions={
 					<Button variant="outline" onClick={refreshAll}>
 						刷新
@@ -73,6 +75,18 @@ export default function DashboardPage() {
 							refreshKey={refreshKey}
 						/>
 						<WeeklyReportOverview
+							semesterId={semester.id}
+							currentWeek={currentWeek}
+							refreshKey={refreshKey}
+						/>
+					</div>
+					<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+						<DailyAttendanceOverview
+							semesterId={semester.id}
+							currentWeek={currentWeek}
+							refreshKey={refreshKey}
+						/>
+						<SeminarAttendanceOverview
 							semesterId={semester.id}
 							currentWeek={currentWeek}
 							refreshKey={refreshKey}
