@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { MissedBarChart } from "@/components/common/MissedBarChart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,6 +81,12 @@ export function SeminarAttendanceOverview({
 						)}
 					</>
 				)}
+				<Link
+					href="/attendance?tab=seminar"
+					className="inline-block text-sm text-blue-600 hover:underline dark:text-blue-400"
+				>
+					查看组会考勤 →
+				</Link>
 			</CardContent>
 		</Card>
 	);

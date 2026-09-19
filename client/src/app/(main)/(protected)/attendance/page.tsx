@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Download, Loader2 } from "lucide-react";
 import { AttendanceBarChart } from "@/components/attendance/AttendanceBarChart";
 import { ScheduleWeekGrid } from "@/components/attendance/ScheduleWeekGrid";
@@ -46,7 +47,13 @@ function parseNames(text: string): string[] {
 		.filter(Boolean);
 }
 
-export default function AttendancePage() {
+/** Tabs reachable from other pages via `?tab=`; anything else falls back to 日常考勤. */
+const ATTENDANCE_TABS = ["daily", "seminar", "leave", "schedule"] as const;
+
+function AttendancePageContent() {
+	const searchParams = useSearchParams();
+	const requestedTab = searchParams.get("tab");
+	const initialTab = ATTENDANCE_TABS.find((tab) => tab === requestedTab) ?? "daily";
 	const { semester, currentWeek } = useCurrentSemester();
 	const [semesters, setSemesters] = useState<Semester[]>([]);
 	const [week, setWeek] = useState<number | null>(null);
@@ -221,7 +228,7 @@ export default function AttendancePage() {
 				</div>
 			) : null}
 
-			<Tabs defaultValue="daily">
+			<Tabs defaultValue={initialTab}>
 				<TabsList>
 					<TabsTrigger value="daily">日常考勤</TabsTrigger>
 					<TabsTrigger value="seminar">组会考勤</TabsTrigger>
@@ -494,5 +501,22 @@ export default function AttendancePage() {
 				</TabsContent>
 			</Tabs>
 		</div>
+	);
+}
+
+export default function AttendancePage() {
+	return (
+		<Suspense
+			fallback={
+				<div className="mx-auto w-full max-w-5xl px-6 py-8">
+					<div className="flex items-center gap-2 text-sm text-muted-foreground">
+						<Loader2 className="h-4 w-4 animate-spin" />
+						正在加载考勤数据...
+					</div>
+				</div>
+			}
+		>
+			<AttendancePageContent />
+		</Suspense>
 	);
 }

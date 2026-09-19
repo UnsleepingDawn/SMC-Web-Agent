@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { AttendanceBarChart } from "@/components/attendance/AttendanceBarChart";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,6 +67,12 @@ export function DailyAttendanceOverview({
 						)}
 					</>
 				)}
+				<Link
+					href="/attendance?tab=daily"
+					className="inline-block text-sm text-blue-600 hover:underline dark:text-blue-400"
+				>
+					查看考勤统计 →
+				</Link>
 			</CardContent>
 		</Card>
 	);
