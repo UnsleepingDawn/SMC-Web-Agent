@@ -1,5 +1,7 @@
 "use client";
 
+import { buildTicks } from "@/lib/chartTicks";
+
 interface AttendanceBarChartProps {
 	data: { name: string; absent: number; late: number }[];
 }
@@ -12,21 +14,6 @@ const COLUMN_WIDTH = 40;
 const COLUMN_GAP = 6;
 /** Gap in px between the two bars of one person. */
 const BAR_GAP = 4;
-
-/** Round the axis maximum up to a readable step and list the ticks (0..max). */
-function buildTicks(maxValue: number): { max: number; ticks: number[] } {
-	const target = Math.max(1, maxValue);
-	const step =
-		[1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].find(
-			(candidate) => target / candidate <= 4,
-		) ?? 1000;
-	const max = Math.ceil(target / step) * step;
-	const ticks: number[] = [];
-	for (let value = 0; value <= max; value += step) {
-		ticks.push(value);
-	}
-	return { max, ticks };
-}
 
 /** A dependency-free grouped bar chart for the weekly attendance counts. */
 export function AttendanceBarChart({ data }: AttendanceBarChartProps) {

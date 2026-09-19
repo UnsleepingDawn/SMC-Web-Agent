@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Loader2, Settings } from "lucide-react";
+import { ImageDown, Loader2, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -11,6 +11,7 @@ import { SeminarOverview } from "@/components/dashboard/SeminarOverview";
 import { DailyAttendanceOverview } from "@/components/dashboard/DailyAttendanceOverview";
 import { SeminarAttendanceOverview } from "@/components/dashboard/SeminarAttendanceOverview";
 import { WeeklyReportOverview } from "@/components/dashboard/WeeklyReportOverview";
+import { WeeklyPosterDialog } from "@/components/poster/WeeklyPosterDialog";
 import { SyncPanel, SYNC_ALL } from "@/components/sync/SyncPanel";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useSemesters } from "@/hooks/useSemesters";
@@ -22,6 +23,7 @@ export default function DashboardPage() {
 	const [refreshKey, setRefreshKey] = useState(0);
 	/** Set once the user picks a week by hand; null means "follow the default rule". */
 	const [customWeek, setCustomWeek] = useState<number | null>(null);
+	const [isPosterOpen, setIsPosterOpen] = useState(false);
 
 	const defaultWeek = defaultStatsWeek(currentWeek);
 	// A stale selection (or one from a longer semester) never runs past the current week.
@@ -43,9 +45,19 @@ export default function DashboardPage() {
 				title="仪表盘"
 				description="当前学期、下次组会、周报进度与考勤统计一览。"
 				actions={
-					<Button variant="outline" onClick={refreshAll}>
-						刷新
-					</Button>
+					<div className="flex flex-wrap items-center gap-2">
+						<Button
+							variant="outline"
+							onClick={() => setIsPosterOpen(true)}
+							disabled={statsWeek == null}
+						>
+							<ImageDown className="mr-2 h-4 w-4" />
+							生成海报
+						</Button>
+						<Button variant="outline" onClick={refreshAll}>
+							刷新
+						</Button>
+					</div>
 				}
 			/>
 
@@ -110,6 +122,16 @@ export default function DashboardPage() {
 							refreshKey={refreshKey}
 						/>
 					</div>
+					{statsWeek != null ? (
+						<WeeklyPosterDialog
+							open={isPosterOpen}
+							onOpenChange={setIsPosterOpen}
+							semester={semester}
+							week={statsWeek}
+							currentWeek={currentWeek}
+							refreshKey={refreshKey}
+						/>
+					) : null}
 				</div>
 			)}
 		</div>

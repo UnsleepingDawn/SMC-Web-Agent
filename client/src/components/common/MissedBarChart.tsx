@@ -1,5 +1,7 @@
 "use client";
 
+import { buildTicks } from "@/lib/chartTicks";
+
 /** One person's accumulated misses, shared by the weekly-report and seminar charts. */
 export interface MissedBarRow {
 	name: string;
@@ -28,21 +30,6 @@ const DEFAULT_PLOT_HEIGHT = 160;
 const COLUMN_WIDTH = 40;
 /** Gap in px between two neighbouring people. */
 const COLUMN_GAP = 6;
-
-/** Round the axis maximum up to a readable step and list the ticks (0..max). */
-function buildTicks(maxValue: number): { max: number; ticks: number[] } {
-	const target = Math.max(1, maxValue);
-	const step =
-		[1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].find(
-			(candidate) => target / candidate <= 4,
-		) ?? 1000;
-	const max = Math.ceil(target / step) * step;
-	const ticks: number[] = [];
-	for (let value = 0; value <= max; value += step) {
-		ticks.push(value);
-	}
-	return { max, ticks };
-}
 
 /** A dependency-free bar chart for accumulated misses, styled like the attendance chart. */
 export function MissedBarChart({
