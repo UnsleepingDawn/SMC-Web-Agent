@@ -10,19 +10,20 @@ import { useWeeklyReports } from "@/hooks/useWeeklyReports";
 
 interface WeeklyReportOverviewProps {
 	semesterId: string;
-	currentWeek: number | null;
+	/** Week selected on the dashboard; not necessarily the semester's current week. */
+	week: number | null;
 	/** Bumped by the parent after a sync to force a reload. */
 	refreshKey?: number;
 }
 
 export function WeeklyReportOverview({
 	semesterId,
-	currentWeek,
+	week,
 	refreshKey = 0,
 }: WeeklyReportOverviewProps) {
-	const { stats, isLoading } = useWeeklyReports(currentWeek ?? 0, semesterId, refreshKey);
+	const { stats, isLoading } = useWeeklyReports(week ?? 0, semesterId, refreshKey);
 	const { summary: missed, isLoading: isMissedLoading } = useWeeklyReportMissed(
-		currentWeek ?? 0,
+		week ?? 0,
 		semesterId,
 		refreshKey,
 	);
@@ -34,7 +35,7 @@ export function WeeklyReportOverview({
 		<Card>
 			<CardHeader>
 				<CardTitle>周报提交进度</CardTitle>
-				<CardDescription>第 {currentWeek ?? "-"} 周的提交情况。</CardDescription>
+				<CardDescription>第 {week ?? "-"} 周的提交情况。</CardDescription>
 			</CardHeader>
 			<CardContent>
 				{isLoading ? (
@@ -64,7 +65,7 @@ export function WeeklyReportOverview({
 							</p>
 						) : (
 							<p className="text-sm text-green-600 dark:text-green-400">
-								本周所有人都已提交周报。
+								该周所有人都已提交周报。
 							</p>
 						)}
 						{isMissedLoading ? (

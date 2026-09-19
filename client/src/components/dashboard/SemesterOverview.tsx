@@ -1,14 +1,43 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Semester, WEEKDAY_NAMES } from "@/lib/schema";
 import { formatHhmm } from "@/lib/utils";
 
 interface SemesterOverviewProps {
 	semester: Semester;
 	currentWeek: number | null;
+	/** Week the statistics cards are currently showing. */
+	statsWeek: number | null;
+	/** True when `statsWeek` comes from a manual selection rather than the default rule. */
+	isCustomWeek: boolean;
+	onSelectWeek: (week: number) => void;
+	onResetWeek: () => void;
 }
 
-export function SemesterOverview({ semester, currentWeek }: SemesterOverviewProps) {
+export function SemesterOverview({
+	semester,
+	currentWeek,
+	statsWeek,
+	isCustomWeek,
+	onSelectWeek,
+	onResetWeek,
+}: SemesterOverviewProps) {
+	// Only the current week and earlier can be selected; future weeks have no data.
+	const weekOptions = currentWeek
+		? Array.from({ length: currentWeek }, (_, index) => currentWeek - index)
+		: [];
+
 	return (
 		<Card>
 			<CardHeader>
@@ -43,6 +72,34 @@ export function SemesterOverview({ semester, currentWeek }: SemesterOverviewProp
 						</dd>
 					</div>
 				</dl>
+				<div className="flex flex-wrap items-center gap-3 border-t pt-4">
+					<Label htmlFor="stats-week" className="text-sm whitespace-nowrap">
+						统计周次
+					</Label>
+					<Select
+						value={statsWeek ? String(statsWeek) : undefined}
+						onValueChange={(value) => onSelectWeek(Number(value))}
+					>
+						<SelectTrigger id="stats-week" className="w-28" disabled={!currentWeek}>
+							<SelectValue placeholder="选择周次" />
+						</SelectTrigger>
+						<SelectContent>
+							{weekOptions.map((week) => (
+								<SelectItem key={week} value={String(week)}>
+									第 {week} 周
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+					<Button variant="outline" size="sm" onClick={onResetWeek} disabled={!isCustomWeek}>
+						回到默认
+					</Button>
+					<span className="text-xs text-muted-foreground">
+						{isCustomWeek
+							? "已手动选择周次，仅影响下方统计卡片。"
+							: `默认显示第 ${statsWeek ?? "-"} 周，仅影响下方统计卡片。`}
+					</span>
+				</div>
 			</CardContent>
 		</Card>
 	);

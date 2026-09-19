@@ -14,11 +14,21 @@ import { WeeklyReportOverview } from "@/components/dashboard/WeeklyReportOvervie
 import { SyncPanel, SYNC_ALL } from "@/components/sync/SyncPanel";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useSemesters } from "@/hooks/useSemesters";
+import { defaultStatsWeek } from "@/lib/dashboardWeek";
 
 export default function DashboardPage() {
 	const { semester, currentWeek, isLoading, error, refetch } = useCurrentSemester();
 	const { semesters, refetch: refetchSemesters } = useSemesters();
 	const [refreshKey, setRefreshKey] = useState(0);
+	/** Set once the user picks a week by hand; null means "follow the default rule". */
+	const [customWeek, setCustomWeek] = useState<number | null>(null);
+
+	const defaultWeek = defaultStatsWeek(currentWeek);
+	// A stale selection (or one from a longer semester) never runs past the current week.
+	const statsWeek =
+		customWeek != null && currentWeek != null
+			? Math.min(customWeek, currentWeek)
+			: (customWeek ?? defaultWeek);
 
 	const refreshAll = () => {
 		refetch();
@@ -31,7 +41,7 @@ export default function DashboardPage() {
 		<div className="mx-auto w-full max-w-5xl space-y-8 px-6 py-8">
 			<PageHeader
 				title="仪表盘"
-				description="当前学期、本周组会、周报进度与考勤统计一览。"
+				description="当前学期、下次组会、周报进度与考勤统计一览。"
 				actions={
 					<Button variant="outline" onClick={refreshAll}>
 						刷新
@@ -67,28 +77,36 @@ export default function DashboardPage() {
 						defaultTask={SYNC_ALL}
 						onCompleted={refreshAll}
 					/>
-					<SemesterOverview semester={semester} currentWeek={currentWeek} />
+					<SemesterOverview
+						semester={semester}
+						currentWeek={currentWeek}
+						statsWeek={statsWeek}
+						isCustomWeek={customWeek != null}
+						onSelectWeek={setCustomWeek}
+						onResetWeek={() => setCustomWeek(null)}
+					/>
 					<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
 						<SeminarOverview
+							semester={semester}
 							semesterId={semester.id}
 							currentWeek={currentWeek}
 							refreshKey={refreshKey}
 						/>
 						<WeeklyReportOverview
 							semesterId={semester.id}
-							currentWeek={currentWeek}
+							week={statsWeek}
 							refreshKey={refreshKey}
 						/>
 					</div>
 					<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
 						<DailyAttendanceOverview
 							semesterId={semester.id}
-							currentWeek={currentWeek}
+							week={statsWeek}
 							refreshKey={refreshKey}
 						/>
 						<SeminarAttendanceOverview
 							semesterId={semester.id}
-							currentWeek={currentWeek}
+							week={statsWeek}
 							refreshKey={refreshKey}
 						/>
 					</div>

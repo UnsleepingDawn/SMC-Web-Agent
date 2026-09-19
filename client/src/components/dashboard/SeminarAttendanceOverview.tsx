@@ -9,7 +9,8 @@ import { useSeminarMissed } from "@/hooks/useSeminarMissed";
 
 interface SeminarAttendanceOverviewProps {
 	semesterId: string;
-	currentWeek: number | null;
+	/** Week selected on the dashboard; not necessarily the semester's current week. */
+	week: number | null;
 	/** Bumped by the parent after a sync to force a reload. */
 	refreshKey?: number;
 }
@@ -19,17 +20,17 @@ const NAME_LIMIT = 8;
 
 export function SeminarAttendanceOverview({
 	semesterId,
-	currentWeek,
+	week,
 	refreshKey = 0,
 }: SeminarAttendanceOverviewProps) {
 	const { seminar, isLoading } = useAttendanceOverview(
 		semesterId,
-		currentWeek ?? undefined,
+		week ?? undefined,
 		refreshKey,
 	);
 	const { summary: missed, isLoading: isMissedLoading } = useSeminarMissed(
 		semesterId,
-		currentWeek ?? undefined,
+		week ?? undefined,
 		refreshKey,
 	);
 
@@ -40,7 +41,7 @@ export function SeminarAttendanceOverview({
 			<CardHeader>
 				<CardTitle>组会考勤统计</CardTitle>
 				<CardDescription>
-					第 {currentWeek ?? "-"} 周的组会出勤与累计缺勤次数。
+					第 {week ?? "-"} 周的组会出勤与累计缺勤次数。
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
@@ -64,11 +65,11 @@ export function SeminarAttendanceOverview({
 						/>
 						{!seminar ? (
 							<p className="text-sm text-muted-foreground">
-								本周还没有组会考勤数据，请先同步组会考勤。
+								该周还没有组会考勤数据，请先同步组会考勤。
 							</p>
 						) : absentNames.length > 0 ? (
 							<p className="text-sm text-muted-foreground">
-								本周未出勤：
+								该周未出勤：
 								{absentNames.slice(0, NAME_LIMIT).join("、")}
 								{absentNames.length > NAME_LIMIT
 									? ` 等 ${absentNames.length} 人`
@@ -76,7 +77,7 @@ export function SeminarAttendanceOverview({
 							</p>
 						) : (
 							<p className="text-sm text-green-600 dark:text-green-400">
-								本周所有人都已出勤。
+								该周所有人都已出勤。
 							</p>
 						)}
 					</>

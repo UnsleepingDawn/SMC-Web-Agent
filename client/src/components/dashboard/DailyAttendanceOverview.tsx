@@ -8,7 +8,8 @@ import { useAttendanceOverview } from "@/hooks/useAttendanceOverview";
 
 interface DailyAttendanceOverviewProps {
 	semesterId: string;
-	currentWeek: number | null;
+	/** Week selected on the dashboard; not necessarily the semester's current week. */
+	week: number | null;
 	/** Bumped by the parent after a sync to force a reload. */
 	refreshKey?: number;
 }
@@ -20,12 +21,12 @@ const ABSENT_THRESHOLD = 3;
 
 export function DailyAttendanceOverview({
 	semesterId,
-	currentWeek,
+	week,
 	refreshKey = 0,
 }: DailyAttendanceOverviewProps) {
 	const { daily, isLoading } = useAttendanceOverview(
 		semesterId,
-		currentWeek ?? undefined,
+		week ?? undefined,
 		refreshKey,
 	);
 
@@ -37,7 +38,7 @@ export function DailyAttendanceOverview({
 		<Card>
 			<CardHeader>
 				<CardTitle>日常考勤统计</CardTitle>
-				<CardDescription>第 {currentWeek ?? "-"} 周的缺卡与迟到次数。</CardDescription>
+				<CardDescription>第 {week ?? "-"} 周的缺卡与迟到次数。</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				{isLoading ? (
@@ -47,7 +48,7 @@ export function DailyAttendanceOverview({
 					</div>
 				) : !daily || daily.chart.length === 0 ? (
 					<p className="text-sm text-muted-foreground">
-						本周还没有日常考勤数据，请先同步日常考勤。
+						该周还没有日常考勤数据，请先同步日常考勤。
 					</p>
 				) : (
 					<>
@@ -62,7 +63,7 @@ export function DailyAttendanceOverview({
 							</p>
 						) : (
 							<p className="text-sm text-green-600 dark:text-green-400">
-								本周没有缺卡 ≥ {ABSENT_THRESHOLD} 次的同学。
+								该周没有缺卡 ≥ {ABSENT_THRESHOLD} 次的同学。
 							</p>
 						)}
 					</>
