@@ -108,11 +108,13 @@ export function WeeklyPoster({
 	const period = weekPeriod(semester.start_date, week);
 	const seminar = nextSeminar(data.seminars, semester, currentWeek ?? week);
 
-	// Most severe first, so the ten columns a poster can fit are the useful ones.
-	const dailyChart = [...(daily?.chart ?? [])].sort(
-		(a, b) => b.absent - a.absent || b.late - a.late || a.name.localeCompare(b.name, "zh"),
-	);
-	const absentNames = dailyChart.filter((row) => row.absent >= ABSENT_THRESHOLD).map((row) => row.name);
+	// The poster charts the same people the dashboard card calls out: 缺卡 ≥ 3 only.
+	// Sorting by severity first means the ten columns a poster fits are the useful ones.
+	const dailyRows = daily?.chart ?? [];
+	const dailyChart = dailyRows
+		.filter((row) => row.absent >= ABSENT_THRESHOLD)
+		.sort((a, b) => b.absent - a.absent || b.late - a.late || a.name.localeCompare(b.name, "zh"));
+	const absentNames = dailyChart.map((row) => row.name);
 
 	const weeklyTotal = weeklyStats
 		? weeklyStats.submitted_count + weeklyStats.missing_count
@@ -223,18 +225,20 @@ export function WeeklyPoster({
 
 				<PosterSection title="日常考勤统计">
 					<div className="space-y-[28px]">
-						{dailyChart.length === 0 ? (
+						{dailyRows.length === 0 ? (
 							<p className="text-[30px] text-muted-foreground">
 								该周还没有日常考勤数据，请先同步日常考勤。
+							</p>
+						) : dailyChart.length === 0 ? (
+							<p className="text-[30px] text-muted-foreground">
+								该周没有缺卡 ≥ {ABSENT_THRESHOLD} 次的同学。
 							</p>
 						) : (
 							<>
 								<p className="text-[28px] leading-snug">
 									<span className="font-medium">缺卡 ≥ {ABSENT_THRESHOLD} 次：</span>
 									<span className="text-muted-foreground">
-										{absentNames.length === 0
-											? `该周没有缺卡 ≥ ${ABSENT_THRESHOLD} 次的同学。`
-											: formatNameList(absentNames)}
+										{formatNameList(absentNames)}
 									</span>
 								</p>
 								<PosterBarChart
@@ -247,7 +251,7 @@ export function WeeklyPoster({
 										{ label: "缺卡", className: "bg-rose-500" },
 										{ label: "迟到", className: "bg-amber-500" },
 									]}
-									emptyText="该周还没有日常考勤数据。"
+									emptyText="该周没有缺卡 ≥ 3 次的同学。"
 									plotWidth={PLOT_WIDTH}
 								/>
 							</>

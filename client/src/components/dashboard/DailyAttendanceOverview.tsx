@@ -30,9 +30,11 @@ export function DailyAttendanceOverview({
 		refreshKey,
 	);
 
-	const absentNames = (daily?.chart ?? [])
-		.filter((row) => row.absent >= ABSENT_THRESHOLD)
-		.map((row) => row.name);
+	// Only people worth calling out are charted or named, so the chart and the
+	// list below it always agree. The full roster stays on the attendance page.
+	const chartRows = daily?.chart ?? [];
+	const chartData = chartRows.filter((row) => row.absent >= ABSENT_THRESHOLD);
+	const absentNames = chartData.map((row) => row.name);
 
 	return (
 		<Card>
@@ -46,26 +48,24 @@ export function DailyAttendanceOverview({
 						<Loader2 className="h-4 w-4 animate-spin" />
 						正在统计...
 					</div>
-				) : !daily || daily.chart.length === 0 ? (
+				) : chartRows.length === 0 ? (
 					<p className="text-sm text-muted-foreground">
 						该周还没有日常考勤数据，请先同步日常考勤。
 					</p>
+				) : chartData.length === 0 ? (
+					<p className="text-sm text-green-600 dark:text-green-400">
+						该周没有缺卡 ≥ {ABSENT_THRESHOLD} 次的同学。
+					</p>
 				) : (
 					<>
-						<AttendanceBarChart data={daily.chart} />
-						{absentNames.length > 0 ? (
-							<p className="text-sm text-muted-foreground">
-								缺卡 ≥ {ABSENT_THRESHOLD} 次：
-								{absentNames.slice(0, NAME_LIMIT).join("、")}
-								{absentNames.length > NAME_LIMIT
-									? ` 等 ${absentNames.length} 人`
-									: ""}
-							</p>
-						) : (
-							<p className="text-sm text-green-600 dark:text-green-400">
-								该周没有缺卡 ≥ {ABSENT_THRESHOLD} 次的同学。
-							</p>
-						)}
+						<AttendanceBarChart data={chartData} />
+						<p className="text-sm text-muted-foreground">
+							缺卡 ≥ {ABSENT_THRESHOLD} 次：
+							{absentNames.slice(0, NAME_LIMIT).join("、")}
+							{absentNames.length > NAME_LIMIT
+								? ` 等 ${absentNames.length} 人`
+								: ""}
+						</p>
 					</>
 				)}
 				<Link
