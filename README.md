@@ -27,10 +27,10 @@ Windows（PowerShell）需要先设置 `HOME`，并显式调用 Git 自带的 ba
 
 ```powershell
 $env:HOME = $env:USERPROFILE
-& "C:\Program Files\Git\bin\bash.exe" ./dev.sh dev-build
+& "D:\Install0\Git\bin\bash.exe" ./dev.sh dev-build
 ```
 
-> 上面的 bash 路径只是示例，按本机 Git 的实际安装位置改（用 `Get-Command git` 看安装目录，比如装在 D 盘时可能是 `D:\Install0\Git\bin\bash.exe`）。
+> 上面是本机的 Git bash 路径（Git 装在 `D:\Install0\Git`）。换机器时用 `(Get-Command git).Source` 得到 `...\Git\cmd\git.exe`，去掉尾部 `cmd\git.exe` 后拼 `bin\bash.exe` 即可。
 
 ## 技术栈
 

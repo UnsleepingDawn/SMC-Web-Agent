@@ -28,8 +28,6 @@ export function SeminarOverview({
 		() => nextSeminar(seminars, semester, currentWeek),
 		[seminars, semester, currentWeek],
 	);
-	const isFutureWeek = next != null && currentWeek != null && next.week > currentWeek;
-
 	return (
 		<Card>
 			<CardHeader>
@@ -52,11 +50,6 @@ export function SeminarOverview({
 								{WEEKDAY_NAMES[next.weekday - 1] ?? ""}
 								{next.room ? ` · ${next.room}` : ""}
 							</span>
-							{isFutureWeek ? (
-								<span className="text-xs text-muted-foreground">
-									（本周组会已结束 / 本周无组会）
-								</span>
-							) : null}
 						</div>
 						<ul className="space-y-3">
 							{next.presentations.map((presentation) => (

@@ -116,9 +116,7 @@ export function WeeklyPoster({
 		.sort((a, b) => b.absent - a.absent || b.late - a.late || a.name.localeCompare(b.name, "zh"));
 	const absentNames = dailyChart.map((row) => row.name);
 
-	const weeklyTotal = weeklyStats
-		? weeklyStats.submitted_count + weeklyStats.missing_count
-		: 0;
+	const weeklyTotal = weeklyStats?.total_count ?? 0;
 	const weeklyPercent =
 		weeklyTotal === 0
 			? 0

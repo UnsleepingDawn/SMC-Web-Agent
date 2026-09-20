@@ -1,13 +1,17 @@
 """Weekly report CRUD and the submitted/missing split."""
 
+import os
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
+from app.database.crud.attendance_crud import attendance_group as attendance_group_crud
 from app.database.crud.base_crud import CRUDBase
 from app.database.models import Member, WeeklyPushDraft, WeeklyReport
 from app.schemas.user import CurrentUser
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+DEFAULT_ATTENDANCE_GROUP_NAME = "SMC考勤"
 
 
 class WeeklyReportCreate(BaseModel):
@@ -67,6 +71,41 @@ class CRUDWeeklyReport(CRUDBase[WeeklyReport, WeeklyReportCreate, WeeklyReportUp
         submitted_names = {row.member_name for row in submitted}
         expected = self.expected_members(db)
         missing = [m for m in expected if m.name not in submitted_names]
+        return submitted, missing
+
+    def attendance_group_names(self, db: Session) -> List[str]:
+        """The attendance roster: who the statistics count as due.
+
+        The attendance group is the base, mirroring the seminar attendance
+        statistics. Members flagged with ``need_attendance`` that are no longer
+        in the group are ignored, which is what makes the count match the
+        attendance table. Without attendance-group data the flags are used as a
+        fallback so the statistics always have a roster.
+        """
+        group_name = os.getenv(
+            "FEISHU_ATTENDANCE_GROUP_NAME", DEFAULT_ATTENDANCE_GROUP_NAME
+        )
+        rows = attendance_group_crud.list_members(db, group_name=group_name)
+        names = sorted({str(row.name) for row in rows if row.name})
+        if names:
+            return names
+        return [member.name for member in self.expected_members(db)]
+
+    def submitted_and_missing_stats(
+        self, db: Session, *, semester_id: UUID, week: int
+    ) -> tuple[List[WeeklyReport], List[Dict[str, str]]]:
+        """Submitted rows plus the attendance-group members with no report.
+
+        Submitters outside the group stay in ``submitted``, so the counts satisfy
+        ``submitted + missing == group_size + extra_submitters``.
+        """
+        submitted = self.list_by_week(db, semester_id=semester_id, week=week)
+        submitted_names = {row.member_name for row in submitted}
+        missing = [
+            {"name": name}
+            for name in self.attendance_group_names(db)
+            if name not in submitted_names
+        ]
         return submitted, missing
 
 

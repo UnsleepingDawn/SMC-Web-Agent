@@ -28,7 +28,7 @@ export function WeeklyReportOverview({
 		refreshKey,
 	);
 
-	const total = stats ? stats.submitted_count + stats.missing_count : 0;
+	const total = stats?.total_count ?? 0;
 	const percent = total === 0 ? 0 : Math.round(((stats?.submitted_count ?? 0) / total) * 100);
 
 	return (

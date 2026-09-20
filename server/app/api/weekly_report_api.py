@@ -76,16 +76,18 @@ def weekly_report_stats(
     db: Session = Depends(get_db),
 ):
     db_semester = _resolve_semester(db, semester_id)
-    submitted, missing = weekly_report_crud.submitted_and_missing(
+    submitted, missing = weekly_report_crud.submitted_and_missing_stats(
         db, semester_id=db_semester.id, week=week
     )
     return {
         "semester": db_semester.to_dict(),
         "week": week,
         "submitted": [row.to_dict() for row in submitted],
-        "missing": [row.to_dict() for row in missing],
+        "missing": missing,
         "submitted_count": len(submitted),
         "missing_count": len(missing),
+        # The attendance group plus anyone who submitted from outside it.
+        "total_count": len(submitted) + len(missing),
     }
 
 

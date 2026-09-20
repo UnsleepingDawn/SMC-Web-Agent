@@ -121,9 +121,12 @@ export interface WeeklyReportStats {
 	semester: Semester;
 	week: number;
 	submitted: WeeklyReport[];
-	missing: Member[];
+	/** Attendance-group members with no report this week. */
+	missing: { name: string }[];
 	submitted_count: number;
 	missing_count: number;
+	/** 已提交 + 未提交；额外提交者已计入分子分母。 */
+	total_count: number;
 }
 
 /** One member's accumulated missed weeks since their last submission. */
