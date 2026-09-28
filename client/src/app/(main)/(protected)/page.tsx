@@ -84,7 +84,9 @@ export default function DashboardPage() {
 					<SyncPanel
 						semesters={semesters}
 						defaultSemesterId={semester.id}
-						defaultWeek={currentWeek}
+						// Same default rule as the statistics cards below; the sync
+						// card ignores the manual stats-week selection on purpose.
+						defaultWeek={defaultWeek}
 						allowSyncAll
 						defaultTask={SYNC_ALL}
 						onCompleted={refreshAll}
