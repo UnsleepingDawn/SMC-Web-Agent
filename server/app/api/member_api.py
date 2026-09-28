@@ -46,18 +46,21 @@ def list_members(
     search: Optional[str] = Query(None),
     advisor: Optional[List[str]] = Query(None),
     grade: Optional[List[str]] = Query(None),
+    cultivation_type: Optional[List[str]] = Query(None),
     enrollment_status: Optional[List[str]] = Query(None),
     need_attendance: Optional[bool] = Query(None),
     is_active: Optional[bool] = Query(None),
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
 ):
-    """List members; ``advisor`` / ``grade`` / ``enrollment_status`` repeat to OR several values."""
+    """List members; ``advisor`` / ``grade`` / ``cultivation_type`` /
+    ``enrollment_status`` repeat to OR several values."""
     rows = member_crud.list_filtered(
         db,
         search=search,
         advisor=advisor,
         grade=grade,
+        cultivation_type=cultivation_type,
         enrollment_status=enrollment_status,
         need_attendance=need_attendance,
         is_active=is_active,
@@ -73,6 +76,7 @@ def member_filters(
     return {
         "advisors": member_crud.distinct_values(db, "advisor"),
         "grades": member_crud.distinct_values(db, "grade"),
+        "cultivation_types": member_crud.distinct_values(db, "cultivation_type"),
         "enrollment_statuses": member_crud.distinct_values(db, "enrollment_status"),
     }
 

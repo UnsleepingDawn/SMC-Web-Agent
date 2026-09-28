@@ -79,6 +79,7 @@ export interface Member {
 export interface MemberFilters {
 	advisors: string[];
 	grades: string[];
+	cultivation_types: string[];
 	enrollment_statuses: string[];
 }
 

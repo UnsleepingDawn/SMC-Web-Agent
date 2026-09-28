@@ -16,6 +16,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+	EMPTY_FILTERS,
 	MemberFilterState,
 	MEMBER_FILTER_FIELDS,
 	countSelected,
@@ -60,9 +61,10 @@ export function MemberFilterMenu({ filters, value, onChange, className }: Member
 					return (
 						<DropdownMenuSub key={spec.field}>
 							<DropdownMenuSubTrigger>
-								<span>{spec.label}</span>
+								{/* flex-1 keeps the count badge and the chevron in one column. */}
+								<span className="flex-1 text-left">{spec.label}</span>
 								{selected.length > 0 ? (
-									<Badge variant="secondary" className="ml-auto mr-1 tabular-nums">
+									<Badge variant="secondary" className="mr-1 tabular-nums">
 										{selected.length}
 									</Badge>
 								) : null}
@@ -95,13 +97,7 @@ export function MemberFilterMenu({ filters, value, onChange, className }: Member
 						<DropdownMenuItem
 							onSelect={(event) => {
 								event.preventDefault();
-								onChange({
-									...value,
-									advisor: [],
-									grade: [],
-									enrollment_status: [],
-									need_attendance: [],
-								});
+								onChange(EMPTY_FILTERS);
 							}}
 						>
 							<RotateCcw className="mr-2 h-4 w-4" />

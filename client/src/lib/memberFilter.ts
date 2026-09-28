@@ -11,6 +11,7 @@ import { MemberFilters } from "./schema";
 export type MemberFilterField =
 	| "advisor"
 	| "grade"
+	| "cultivation_type"
 	| "enrollment_status"
 	| "need_attendance";
 
@@ -18,22 +19,35 @@ export interface MemberFilterState {
 	search: string;
 	advisor: string[];
 	grade: string[];
+	cultivation_type: string[];
 	enrollment_status: string[];
 	need_attendance: string[];
 }
 
+/** Every field unconstrained. */
 export const EMPTY_FILTERS: MemberFilterState = {
 	search: "",
 	advisor: [],
 	grade: [],
+	cultivation_type: [],
 	enrollment_status: [],
 	need_attendance: [],
 };
 
-/** The four list-valued fields, i.e. everything except the free-text search. */
+/**
+ * Initial state of the members page: the roster defaults to members who are
+ * still around, so alumni imported from the address book stay out of the way.
+ */
+export const DEFAULT_FILTERS: MemberFilterState = {
+	...EMPTY_FILTERS,
+	enrollment_status: ["在读", "临近毕业"],
+};
+
+/** The five list-valued fields, i.e. everything except the free-text search. */
 const FILTER_VALUE_FIELDS: MemberFilterField[] = [
 	"advisor",
 	"grade",
+	"cultivation_type",
 	"enrollment_status",
 	"need_attendance",
 ];
@@ -60,6 +74,11 @@ export interface MemberFilterFieldSpec {
 export const MEMBER_FILTER_FIELDS: MemberFilterFieldSpec[] = [
 	{ field: "advisor", label: "导师", optionsKey: "advisors" },
 	{ field: "grade", label: "年级", optionsKey: "grades" },
+	{
+		field: "cultivation_type",
+		label: "培养类型",
+		optionsKey: "cultivation_types",
+	},
 	{
 		field: "enrollment_status",
 		label: "在读情况",

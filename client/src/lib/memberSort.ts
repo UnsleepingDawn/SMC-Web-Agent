@@ -24,6 +24,15 @@ export interface MemberSortRule {
 	direction: SortDirection;
 }
 
+/**
+ * Initial sort of the members page: by programme first, then grade, both
+ * descending, so the highest grade of each programme leads its group.
+ */
+export const DEFAULT_MEMBER_SORT_RULES: MemberSortRule[] = [
+	{ field: "cultivation_type", direction: "desc" },
+	{ field: "grade", direction: "desc" },
+];
+
 /** Selectable fields, listed in the same order as the table columns. */
 export const MEMBER_SORT_FIELDS: { field: MemberSortField; label: string }[] = [
 	{ field: "name", label: "姓名" },

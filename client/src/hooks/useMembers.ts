@@ -8,6 +8,7 @@ export interface MemberQuery {
     search?: string;
     advisor?: string[];
     grade?: string[];
+    cultivation_type?: string[];
     enrollment_status?: string[];
     need_attendance?: boolean;
     is_active?: boolean;
@@ -25,7 +26,15 @@ export function useMembers(query: MemberQuery = {}): UseMembersResult {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
 
-    const { search, advisor, grade, enrollment_status, need_attendance, is_active } = query;
+    const {
+        search,
+        advisor,
+        grade,
+        cultivation_type,
+        enrollment_status,
+        need_attendance,
+        is_active,
+    } = query;
 
     const fetchMembers = useCallback(async () => {
         setIsLoading(true);
@@ -35,6 +44,7 @@ export function useMembers(query: MemberQuery = {}): UseMembersResult {
                 search,
                 advisor,
                 grade,
+                cultivation_type,
                 enrollment_status,
                 need_attendance,
                 is_active,
@@ -45,7 +55,15 @@ export function useMembers(query: MemberQuery = {}): UseMembersResult {
         } finally {
             setIsLoading(false);
         }
-    }, [search, advisor, grade, enrollment_status, need_attendance, is_active]);
+    }, [
+        search,
+        advisor,
+        grade,
+        cultivation_type,
+        enrollment_status,
+        need_attendance,
+        is_active,
+    ]);
 
     useEffect(() => {
         fetchMembers();

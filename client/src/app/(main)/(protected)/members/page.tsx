@@ -16,16 +16,22 @@ import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { exportSignatureSheet } from "@/lib/api";
 import { Member } from "@/lib/schema";
 import {
-	EMPTY_FILTERS,
+	DEFAULT_FILTERS,
 	MemberFilterState,
 	deriveNeedAttendance,
 } from "@/lib/memberFilter";
-import { MemberSortRule, sortMembers } from "@/lib/memberSort";
+import {
+	DEFAULT_MEMBER_SORT_RULES,
+	MemberSortRule,
+	sortMembers,
+} from "@/lib/memberSort";
 import { toast } from "sonner";
 
 export default function MembersPage() {
-	const [filters, setFilters] = useState<MemberFilterState>(EMPTY_FILTERS);
-	const [sortRules, setSortRules] = useState<MemberSortRule[]>([]);
+	const [filters, setFilters] = useState<MemberFilterState>(DEFAULT_FILTERS);
+	const [sortRules, setSortRules] = useState<MemberSortRule[]>(
+		DEFAULT_MEMBER_SORT_RULES,
+	);
 	const [editing, setEditing] = useState<Member | null>(null);
 	const [isExporting, setIsExporting] = useState(false);
 
@@ -34,6 +40,9 @@ export default function MembersPage() {
 		search: filters.search || undefined,
 		advisor: filters.advisor.length ? filters.advisor : undefined,
 		grade: filters.grade.length ? filters.grade : undefined,
+		cultivation_type: filters.cultivation_type.length
+			? filters.cultivation_type
+			: undefined,
 		enrollment_status: filters.enrollment_status.length
 			? filters.enrollment_status
 			: undefined,

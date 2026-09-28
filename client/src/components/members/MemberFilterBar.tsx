@@ -10,7 +10,7 @@ interface MemberFilterBarProps {
 	filters: Filters | null;
 	value: MemberFilterState;
 	onChange: (next: MemberFilterState) => void;
-	/** Optional controls pinned to the right end of the bar, e.g. the sort menu. */
+	/** Optional controls rendered after the filter menu, e.g. the sort menu. */
 	trailing?: ReactNode;
 }
 
@@ -26,7 +26,7 @@ export function MemberFilterBar({ filters, value, onChange, trailing }: MemberFi
 				className="md:max-w-xs"
 			/>
 			<MemberFilterMenu filters={filters} value={value} onChange={onChange} />
-			{trailing ? <div className="md:ml-auto">{trailing}</div> : null}
+			{trailing}
 		</div>
 	);
 }

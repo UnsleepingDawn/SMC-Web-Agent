@@ -85,11 +85,12 @@ class CRUDMember(CRUDBase[Member, MemberCreate, MemberUpdate]):
         search: Optional[str] = None,
         advisor: Optional[Union[str, List[str]]] = None,
         grade: Optional[Union[str, List[str]]] = None,
+        cultivation_type: Optional[Union[str, List[str]]] = None,
         enrollment_status: Optional[Union[str, List[str]]] = None,
         need_attendance: Optional[bool] = None,
         is_active: Optional[bool] = None,
     ) -> List[Member]:
-        """Filter the roster; the three text filters accept a scalar or a list.
+        """Filter the roster; the four text filters accept a scalar or a list.
 
         The API passes lists (a repeated query parameter) so several values of
         one field match as OR, while different fields still AND together.
@@ -97,6 +98,7 @@ class CRUDMember(CRUDBase[Member, MemberCreate, MemberUpdate]):
         """
         advisor_values = _as_value_list(advisor)
         grade_values = _as_value_list(grade)
+        cultivation_values = _as_value_list(cultivation_type)
         status_values = _as_value_list(enrollment_status)
 
         query = db.query(Member)
@@ -113,6 +115,8 @@ class CRUDMember(CRUDBase[Member, MemberCreate, MemberUpdate]):
             query = query.filter(Member.advisor.in_(advisor_values))
         if grade_values:
             query = query.filter(Member.grade.in_(grade_values))
+        if cultivation_values:
+            query = query.filter(Member.cultivation_type.in_(cultivation_values))
         if status_values:
             query = query.filter(Member.enrollment_status.in_(status_values))
         if need_attendance is not None:
@@ -171,6 +175,7 @@ class CRUDMember(CRUDBase[Member, MemberCreate, MemberUpdate]):
         columns = {
             "advisor": Member.advisor,
             "grade": Member.grade,
+            "cultivation_type": Member.cultivation_type,
             "enrollment_status": Member.enrollment_status,
         }
         if column not in columns:
