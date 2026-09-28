@@ -39,6 +39,8 @@ alembic upgrade head                            # 应用
 alembic downgrade -1                            # 回滚一步
 ```
 
+Python 依赖由 `server/uv.lock` 与 `jobs/uv.lock` 锁定，Dockerfile 用 `uv sync --frozen` 安装。改动任一 `pyproject.toml` 后，先运行 `bash ./dev.sh dev-lock` 重新生成锁文件，再把它与 `pyproject.toml` 一并提交；两者不一致时构建会直接失败，不会静默升级依赖。
+
 ## 提交前
 
 - 前端/后端改动后，自己先跑通编译与静态检查（TypeScript 检查、lint、后端 `unittest`），不要留下编译不过或半成品的中间态。

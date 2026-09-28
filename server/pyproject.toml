@@ -17,7 +17,9 @@ dependencies = [
     "pydantic-settings>=2.8.1",
     "python-dotenv>=1.2.2",
     "requests>=2.33.0",
-    "sqlalchemy>=2.0.39",
+    # SQLAlchemy 2.1 switched the default driver for bare postgresql:// URLs from
+    # psycopg2 to psycopg (v3). This project uses psycopg2 everywhere, so cap it.
+    "sqlalchemy>=2.0.39,<2.1",
     "psycopg2-binary>=2.9.10",
     "alembic>=1.15.1",
     "python-multipart>=0.0.31",

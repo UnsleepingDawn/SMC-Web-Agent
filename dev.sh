@@ -24,6 +24,17 @@ run_stack() {
   "${command[@]}" "$@"
 }
 
+# Docker Desktop on Windows needs a Windows-style host path for bind mounts, and
+# MSYS must not rewrite container-side paths such as /app. cygpath only exists
+# under Git Bash / MSYS; on macOS and Linux the path is passed through unchanged.
+host_dir() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 case "${1:-}" in
   dev-up)
     run_stack dev up -d
@@ -44,6 +55,18 @@ case "${1:-}" in
     run_stack dev rm -sf client
     docker volume rm smc-dev_client_dev_node_modules smc-dev_client_dev_next 2>/dev/null || true
     run_stack dev up -d --build
+    ;;
+  dev-lock)
+    # Regenerate uv.lock for the Python services after pyproject.toml changes.
+    # Needs PyPI access, so the build-time proxy is passed explicitly (the images
+    # no longer carry proxy env).
+    for svc in server jobs; do
+      MSYS_NO_PATHCONV=1 docker run --rm \
+        -e HTTP_PROXY="${HTTP_PROXY:-http://host.docker.internal:7890}" \
+        -e HTTPS_PROXY="${HTTPS_PROXY:-http://host.docker.internal:7890}" \
+        -e NO_PROXY="${NO_PROXY:-localhost,127.0.0.1,host.docker.internal}" \
+        -v "$(host_dir "$PWD/$svc"):/app" -w /app "smc-$svc:dev" uv lock
+    done
     ;;
   prod-deploy)
     run_stack prod up -d --build --force-recreate
@@ -78,6 +101,7 @@ case "${1:-}" in
   dev-restart  后端或 jobs 源码改动后重启相关进程
   dev-migrate  对开发数据执行迁移
   dev-deps     client package.json/yarn.lock 改动后重建并重置开发依赖缓存
+  dev-lock     server/jobs 的 pyproject.toml 改动后重新生成 uv.lock（需能访问 PyPI）
 
 生产栈（http://prod.smc.localhost:3001，数据在 ~/.smc）：
   prod-deploy  重新构建生产镜像并替换生产容器

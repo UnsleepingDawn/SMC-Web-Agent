@@ -40,9 +40,6 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL}
-      HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:7890}
-      HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:7890}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,host.docker.internal,postgres,rabbitmq,redis,minio,server,jobs-api}
       CLIENT_DOMAIN: ${PUBLIC_BASE_URL:-http://localhost:3000}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
       WEBHOOK_BASE_URL: http://server:8000
@@ -110,9 +107,6 @@ services:
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND}
       DATABASE_URL: ${DATABASE_URL}
       SMC_ENCRYPTION_KEY: ${SMC_ENCRYPTION_KEY}
-      HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:7890}
-      HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:7890}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,host.docker.internal,postgres,rabbitmq,redis,minio,server,jobs-api}
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
       AWS_REGION: ${S3_REGION:-us-east-1}

@@ -48,6 +48,17 @@ cp .env.example .env.local
 
 `.env.local` 已被 `.gitignore` 排除，绝不提交。
 
+`.env.local` 里的 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` **只在构建镜像时生效**（供 apt / pip / yarn 拉依赖）。`server` 与 `jobs` 的 Dockerfile 只声明 `ARG`、不写 `ENV`，compose 也不在运行期注入这三个变量，因此运行期容器不带代理：飞书同步等出站请求一律直连，不依赖本机代理（如 Clash）是否开启。若连构建时都不需要代理，把这三个变量留空即可。
+
+`server/` 与 `jobs/` 的 Python 依赖由各自的 `uv.lock` 锁定，Dockerfile 用 `uv sync --frozen` 安装到镜像内的 `/app/.venv`。锁文件与 `pyproject.toml` 不一致时构建会直接失败，不会静默升级依赖。所以改动任一 `pyproject.toml` 后，必须先重新生成锁文件再重建镜像：
+
+```bash
+bash ./dev.sh dev-lock       # 重新生成 server 与 jobs 的 uv.lock（需能访问 PyPI）
+bash ./dev.sh dev-build      # 再用新的锁文件重建镜像
+```
+
+`uv.lock` 需与 `pyproject.toml` 一并提交，不要手动编辑。
+
 ## 3. 日常操作
 
 ```bash
@@ -57,6 +68,7 @@ bash ./dev.sh dev-migrate    # 应用数据库迁移
 bash ./dev.sh dev-client     # 改前端源码后重启 client
 bash ./dev.sh dev-restart    # 改后端或 jobs 源码后重启相关进程
 bash ./dev.sh dev-deps       # package.json / yarn.lock 变化后重建前端依赖
+bash ./dev.sh dev-lock       # server / jobs 的 pyproject.toml 变化后重新生成 uv.lock
 
 bash ./dev.sh prod-deploy    # 构建并替换生产容器
 bash ./dev.sh prod-up        # 启动已有生产镜像
@@ -101,6 +113,8 @@ $env:HOME = $env:USERPROFILE
 | 登录后立刻掉线 | 检查 `SESSION_COOKIE_DOMAIN` 是否与访问的 hostname 匹配 |
 | 同步任务一直 running | `logs dev jobs-worker`，多半是飞书凭据或权限问题 |
 | 消息推送失败 | 查看「推送历史」页的 error 列，或 `logs dev jobs-worker` |
+| 不开代理时同步报 `ProxyError` / `Connection refused` | 运行期本不该带代理。`docker exec` 进 jobs 容器 `env` 看是否还有 `HTTP(S)_PROXY`；若有，说明镜像还是旧的，重建即可（`dev-build` / `prod-deploy`） |
+| 迁移报 `No module named 'psycopg'` | SQLAlchemy 2.1 起把裸 `postgresql://` 的默认驱动换成 psycopg 3。确认 `server/uv.lock` 锁的是 `sqlalchemy` 2.0.x，并重建镜像 |
 
 ## 6. 相关文档
 

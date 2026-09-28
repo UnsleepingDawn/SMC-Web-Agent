@@ -1,20 +1,29 @@
 FROM python:3.12-slim-bookworm
 
+# Build-time proxy for apt/pip/uv. Docker's predefined ARGs inject these into RUN
+# during the build only and are never persisted into the image. Do NOT turn them
+# into ENV: that would bake the proxy into the image and route runtime traffic
+# (including domestic services such as the Feishu open platform) through it.
 ARG HTTP_PROXY=http://host.docker.internal:7890
 ARG HTTPS_PROXY=http://host.docker.internal:7890
 ARG NO_PROXY=localhost,127.0.0.1,host.docker.internal
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV NO_PROXY=${NO_PROXY}
 
 WORKDIR /app
 
-# Dependencies are installed into site-packages, outside /app, so the dev
-# bind mount of ./server/app does not shadow them.
-COPY pyproject.toml ./
-COPY app ./app
+# uv installs into /app/.venv; putting it first on PATH makes the image CMD and
+# the dev commands in compose.dev.yml (python -m ...) resolve to the venv.
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Dependency layer: third-party deps only, so editing app code keeps the cache.
+# --frozen forbids re-resolving and fails if uv.lock drifts from pyproject.toml.
+COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv \
-    && uv pip install --system --no-cache .
+    && uv sync --frozen --no-install-project
+
+# Project layer: install this package editable so the dev bind mount of
+# ./server/app takes effect without reinstalling.
+COPY app ./app
+RUN uv sync --frozen
 
 COPY migrations ./migrations
 COPY alembic.ini ./
