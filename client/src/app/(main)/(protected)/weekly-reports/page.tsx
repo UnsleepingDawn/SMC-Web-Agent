@@ -40,6 +40,7 @@ import {
 	pushWeeklySummary,
 	waitForNotifications,
 } from "@/lib/api";
+import { defaultStatsWeek } from "@/lib/dashboardWeek";
 import {
 	PostMessage,
 	PushTeacherIssue,
@@ -100,7 +101,8 @@ export default function WeeklyReportsPage() {
 	const { semester, currentWeek } = useCurrentSemester();
 	const { semesters } = useSemesters();
 	const [week, setWeek] = useState<number | null>(null);
-	const activeWeek = week ?? currentWeek ?? 0;
+	const defaultWeek = defaultStatsWeek(currentWeek);
+	const activeWeek = week ?? defaultWeek ?? 0;
 	const { stats, isLoading, error, refetch } = useWeeklyReports(activeWeek, semester?.id);
 	const {
 		summary: missed,
@@ -405,7 +407,7 @@ export default function WeeklyReportsPage() {
 			<SyncPanel
 				semesters={semesters}
 				defaultSemesterId={semester.id}
-				defaultWeek={currentWeek}
+				defaultWeek={defaultWeek}
 				tasks={["weekly_reports"]}
 				defaultTask="weekly_reports"
 				allowSyncAll

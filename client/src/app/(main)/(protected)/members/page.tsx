@@ -14,6 +14,7 @@ import { useMembers } from "@/hooks/useMembers";
 import { useSemesters } from "@/hooks/useSemesters";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { exportSignatureSheet } from "@/lib/api";
+import { defaultStatsWeek } from "@/lib/dashboardWeek";
 import { Member } from "@/lib/schema";
 import {
 	DEFAULT_FILTERS,
@@ -92,7 +93,7 @@ export default function MembersPage() {
 			<SyncPanel
 				semesters={semesters}
 				defaultSemesterId={semester?.id}
-				defaultWeek={currentWeek}
+				defaultWeek={defaultStatsWeek(currentWeek)}
 				tasks={["members"]}
 				defaultTask="members"
 				allowSyncAll

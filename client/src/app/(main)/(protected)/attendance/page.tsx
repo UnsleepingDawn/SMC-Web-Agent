@@ -29,6 +29,7 @@ import { useAttendance } from "@/hooks/useAttendance";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useSeminarMissed } from "@/hooks/useSeminarMissed";
 import { exportDailyAttendance, getSemesters, setSeminarManual } from "@/lib/api";
+import { defaultStatsWeek } from "@/lib/dashboardWeek";
 import { Semester, WEEKDAY_NAMES } from "@/lib/schema";
 import { readSeminarView, writeSeminarView, type SeminarView } from "@/lib/seminarView";
 import { toast } from "sonner";
@@ -59,7 +60,8 @@ function AttendancePageContent() {
 	const { semester, currentWeek } = useCurrentSemester();
 	const [semesters, setSemesters] = useState<Semester[]>([]);
 	const [week, setWeek] = useState<number | null>(null);
-	const activeWeek = week ?? currentWeek ?? 0;
+	const defaultWeek = defaultStatsWeek(currentWeek);
+	const activeWeek = week ?? defaultWeek ?? 0;
 	const { daily, seminar, group, leaves, schedule, isLoading, error, refetch } = useAttendance(
 		semester?.id,
 		activeWeek,
@@ -143,7 +145,6 @@ function AttendancePageContent() {
 				observed_names: names,
 			});
 			toast.success(`已按该列表覆写为 ${response.count} 人到场。`);
-			setRosterText("");
 			switchSeminarView("override");
 			await refetch();
 		} catch (err) {
@@ -200,7 +201,7 @@ function AttendancePageContent() {
 			<SyncPanel
 				semesters={semesters}
 				defaultSemesterId={semester.id}
-				defaultWeek={currentWeek}
+				defaultWeek={defaultWeek}
 				tasks={[
 					"attendance_group",
 					"daily_attendance",

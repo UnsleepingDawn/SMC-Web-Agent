@@ -1,5 +1,7 @@
-// Dashboard week helpers shared by the overview cards. Kept as plain functions
-// so the "which week shows by default" rule lives in exactly one place.
+// Week helpers for the statistics pages. Kept as plain functions so the
+// "which week shows by default" rule lives in exactly one place: the dashboard
+// and the weekly-report / attendance pages all call `defaultStatsWeek`, and
+// every sync panel uses its result as the default week input.
 
 import { Seminar, Semester } from "@/lib/schema";
 import { formatHhmm } from "@/lib/utils";

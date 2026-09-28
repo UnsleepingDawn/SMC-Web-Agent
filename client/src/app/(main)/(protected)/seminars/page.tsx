@@ -17,6 +17,7 @@ import { SyncPanel } from "@/components/sync/SyncPanel";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useSeminars } from "@/hooks/useSeminars";
 import { useSemesters } from "@/hooks/useSemesters";
+import { defaultStatsWeek } from "@/lib/dashboardWeek";
 import { Seminar } from "@/lib/schema";
 
 export default function SeminarsPage() {
@@ -70,7 +71,7 @@ export default function SeminarsPage() {
 			<SyncPanel
 				semesters={semesters}
 				defaultSemesterId={semester?.id}
-				defaultWeek={currentWeek}
+				defaultWeek={defaultStatsWeek(currentWeek)}
 				tasks={["seminars"]}
 				defaultTask="seminars"
 				allowSyncAll
