@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/common/PageHeader";
 import { MemberFilterBar, MemberFilterState, EMPTY_FILTERS } from "@/components/members/MemberFilterBar";
+import { MemberSortControl } from "@/components/members/MemberSortControl";
 import { MemberTable } from "@/components/members/MemberTable";
 import { MemberEditDialog } from "@/components/members/MemberEditDialog";
 import { SyncPanel } from "@/components/sync/SyncPanel";
@@ -14,10 +15,12 @@ import { useSemesters } from "@/hooks/useSemesters";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { exportSignatureSheet } from "@/lib/api";
 import { Member } from "@/lib/schema";
+import { MemberSortRule, sortMembers } from "@/lib/memberSort";
 import { toast } from "sonner";
 
 export default function MembersPage() {
 	const [filters, setFilters] = useState<MemberFilterState>(EMPTY_FILTERS);
+	const [sortRules, setSortRules] = useState<MemberSortRule[]>([]);
 	const [editing, setEditing] = useState<Member | null>(null);
 	const [isExporting, setIsExporting] = useState(false);
 
@@ -31,6 +34,11 @@ export default function MembersPage() {
 	const { filters: options } = useMemberFilters();
 	const { semesters } = useSemesters();
 	const { semester, currentWeek } = useCurrentSemester();
+
+	const sortedMembers = useMemo(
+		() => sortMembers(members, sortRules),
+		[members, sortRules],
+	);
 
 	const handleExport = async () => {
 		setIsExporting(true);
@@ -74,7 +82,14 @@ export default function MembersPage() {
 				}}
 			/>
 
-			<MemberFilterBar filters={options} value={filters} onChange={setFilters} />
+			<MemberFilterBar
+				filters={options}
+				value={filters}
+				onChange={setFilters}
+				trailing={
+					<MemberSortControl rules={sortRules} onChange={setSortRules} />
+				}
+			/>
 
 			{error ? <p className="text-sm text-destructive">{error.message}</p> : null}
 
@@ -84,7 +99,7 @@ export default function MembersPage() {
 					正在加载人员...
 				</div>
 			) : (
-				<MemberTable members={members} onEdit={setEditing} />
+				<MemberTable members={sortedMembers} onEdit={setEditing} />
 			)}
 
 			<MemberEditDialog

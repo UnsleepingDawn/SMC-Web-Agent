@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
@@ -34,9 +35,11 @@ interface MemberFilterBarProps {
 	filters: Filters | null;
 	value: MemberFilterState;
 	onChange: (next: MemberFilterState) => void;
+	/** Optional controls pinned to the right end of the bar, e.g. the sort menu. */
+	trailing?: ReactNode;
 }
 
-export function MemberFilterBar({ filters, value, onChange }: MemberFilterBarProps) {
+export function MemberFilterBar({ filters, value, onChange, trailing }: MemberFilterBarProps) {
 	const patch = (partial: Partial<MemberFilterState>) => onChange({ ...value, ...partial });
 
 	return (
@@ -105,6 +108,7 @@ export function MemberFilterBar({ filters, value, onChange }: MemberFilterBarPro
 					只看需要考勤
 				</Label>
 			</div>
+			{trailing ? <div className="md:ml-auto">{trailing}</div> : null}
 		</div>
 	);
 }
