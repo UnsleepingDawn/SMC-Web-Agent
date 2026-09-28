@@ -325,7 +325,7 @@ class SeminarAttendanceRecord(Base):
     week = Column(Integer, nullable=False, index=True)
     member_name = Column(String, nullable=False, index=True)
     observed = Column(Boolean, nullable=False, default=False)
-    # How the row was produced: the clock-in flow, a group relay, or a manual edit.
+    # How the row was produced: the synced clock-in flow, or a manual override.
     source = Column(String, nullable=False, default="flow")
     seminar_date = Column(Date, nullable=True)
 

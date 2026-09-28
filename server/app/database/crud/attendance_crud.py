@@ -18,6 +18,11 @@ from app.database.models import (
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+# Rows produced by the Feishu clock-in sync. Every other source is an override
+# written from the attendance page, and an override hides the flow rows for the
+# same week wherever the effective roster is computed.
+FLOW_SOURCE = "flow"
+
 
 class DailyAttendanceCreate(BaseModel):
     semester_id: UUID
@@ -102,56 +107,30 @@ class CRUDSeminarAttendance(
         )
 
     def weeks_by_member(self, db: Session, *, semester_id: UUID) -> Dict[str, set]:
-        """The weeks each member was observed, keyed by name."""
+        """The weeks each member was observed, keyed by name.
+
+        A week holding any override row is read from the override rows alone,
+        so the synced clock-in list only applies to weeks without an override.
+        """
         rows = (
-            db.query(SeminarAttendanceRecord.member_name, SeminarAttendanceRecord.week)
-            .filter(
-                SeminarAttendanceRecord.semester_id == semester_id,
-                SeminarAttendanceRecord.observed.is_(True),
+            db.query(
+                SeminarAttendanceRecord.member_name,
+                SeminarAttendanceRecord.week,
+                SeminarAttendanceRecord.observed,
+                SeminarAttendanceRecord.source,
             )
+            .filter(SeminarAttendanceRecord.semester_id == semester_id)
             .all()
         )
+        override_weeks = {int(week) for _, week, _, source in rows if source != FLOW_SOURCE}
         weeks: Dict[str, set] = {}
-        for name, week in rows:
-            weeks.setdefault(str(name), set()).add(week)
+        for name, week, observed, source in rows:
+            if not observed:
+                continue
+            if source == FLOW_SOURCE and int(week) in override_weeks:
+                continue
+            weeks.setdefault(str(name), set()).add(int(week))
         return weeks
-
-    def set_observed(
-        self,
-        db: Session,
-        *,
-        semester_id: UUID,
-        week: int,
-        member_name: str,
-        observed: bool,
-        source: str,
-        seminar_date: Optional[date] = None,
-    ) -> Optional[SeminarAttendanceRecord]:
-        record = (
-            db.query(SeminarAttendanceRecord)
-            .filter(
-                SeminarAttendanceRecord.semester_id == semester_id,
-                SeminarAttendanceRecord.week == week,
-                SeminarAttendanceRecord.member_name == member_name,
-            )
-            .first()
-        )
-        if record:
-            record.observed = observed
-            record.source = source
-            if seminar_date:
-                record.seminar_date = seminar_date
-        else:
-            record = SeminarAttendanceRecord(
-                semester_id=semester_id,
-                week=week,
-                member_name=member_name,
-                observed=observed,
-                source=source,
-                seminar_date=seminar_date,
-            )
-            db.add(record)
-        return record
 
     def replace_flow_rows(
         self,
@@ -162,11 +141,11 @@ class CRUDSeminarAttendance(
         observed_names: Iterable[str],
         seminar_date: Optional[date] = None,
     ) -> int:
-        """Replace flow-sourced rows but leave relay/manual edits untouched."""
+        """Replace the synced rows only, leaving override rows untouched."""
         db.query(SeminarAttendanceRecord).filter(
             SeminarAttendanceRecord.semester_id == semester_id,
             SeminarAttendanceRecord.week == week,
-            SeminarAttendanceRecord.source == "flow",
+            SeminarAttendanceRecord.source == FLOW_SOURCE,
         ).delete(synchronize_session=False)
         count = 0
         for name in observed_names:
@@ -176,7 +155,7 @@ class CRUDSeminarAttendance(
                     week=week,
                     member_name=name,
                     observed=True,
-                    source="flow",
+                    source=FLOW_SOURCE,
                     seminar_date=seminar_date,
                 )
             )
@@ -184,20 +163,25 @@ class CRUDSeminarAttendance(
         db.commit()
         return count
 
-    def replace_week(
+    def replace_override_rows(
         self,
         db: Session,
         *,
         semester_id: UUID,
         week: int,
         observed_names: Iterable[str],
-        source: str,
+        source: str = "manual",
         seminar_date: Optional[date] = None,
     ) -> int:
-        """Replace every row for the week, used by relay and manual overrides."""
+        """Replace the week's override rows, keeping the synced rows intact.
+
+        The synced rows stay around so the page can switch back to the
+        clock-in roster; they are only shadowed while an override exists.
+        """
         db.query(SeminarAttendanceRecord).filter(
             SeminarAttendanceRecord.semester_id == semester_id,
             SeminarAttendanceRecord.week == week,
+            SeminarAttendanceRecord.source != FLOW_SOURCE,
         ).delete(synchronize_session=False)
         count = 0
         for name in observed_names:

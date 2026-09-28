@@ -28,8 +28,9 @@ import { Toggle } from "@/components/ui/toggle";
 import { useAttendance } from "@/hooks/useAttendance";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useSeminarMissed } from "@/hooks/useSeminarMissed";
-import { exportDailyAttendance, getSemesters, setSeminarManual, submitSeminarRelay } from "@/lib/api";
+import { exportDailyAttendance, getSemesters, setSeminarManual } from "@/lib/api";
 import { Semester, WEEKDAY_NAMES } from "@/lib/schema";
+import { readSeminarView, writeSeminarView, type SeminarView } from "@/lib/seminarView";
 import { toast } from "sonner";
 
 function statusClass(status: string): string {
@@ -40,9 +41,10 @@ function statusClass(status: string): string {
 	return "text-muted-foreground";
 }
 
-function parseNames(text: string): string[] {
+/** Each non-empty line is one name, so a pasted roster works as-is. */
+function parseNameLines(text: string): string[] {
 	return text
-		.split(/[\s,，、]+/)
+		.split(/\r?\n/)
 		.map((name) => name.trim())
 		.filter(Boolean);
 }
@@ -72,11 +74,23 @@ function AttendancePageContent() {
 		await Promise.all([refetch(), refetchMissed()]);
 	}, [refetch, refetchMissed]);
 
-	const [relayText, setRelayText] = useState("");
-	const [manualText, setManualText] = useState("");
+	const [rosterText, setRosterText] = useState("");
+	const [seminarView, setSeminarView] = useState<SeminarView>("override");
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [isExporting, setIsExporting] = useState(false);
 	const [onlyAbsent3, setOnlyAbsent3] = useState(true);
+
+	// The chosen roster is a per-week display preference, restored when the
+	// semester or week changes and remembered after the user flips it.
+	useEffect(() => {
+		if (!semester) return;
+		setSeminarView(readSeminarView(semester.id, activeWeek) ?? "override");
+	}, [semester, activeWeek]);
+
+	const switchSeminarView = (nextView: SeminarView) => {
+		setSeminarView(nextView);
+		if (semester) writeSeminarView(semester.id, activeWeek, nextView);
+	};
 
 	useEffect(() => {
 		getSemesters()
@@ -114,34 +128,11 @@ function AttendancePageContent() {
 		}
 	};
 
-	const handleRelay = async () => {
+	const handleOverwrite = async () => {
 		if (!semester) return;
-		if (!relayText.trim()) {
-			toast.error("请粘贴群接龙内容。");
-			return;
-		}
-		setIsSubmitting(true);
-		try {
-			const response = await submitSeminarRelay({
-				semester_id: semester.id,
-				week: activeWeek,
-				text: relayText,
-			});
-			toast.success(`已按接龙记录 ${response.count} 人到场。`);
-			setRelayText("");
-			await refetch();
-		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "解析接龙失败。");
-		} finally {
-			setIsSubmitting(false);
-		}
-	};
-
-	const handleManual = async () => {
-		if (!semester) return;
-		const names = parseNames(manualText);
+		const names = parseNameLines(rosterText);
 		if (names.length === 0) {
-			toast.error("请填写到场名单。");
+			toast.error("请粘贴实际到场名单。");
 			return;
 		}
 		setIsSubmitting(true);
@@ -151,15 +142,27 @@ function AttendancePageContent() {
 				week: activeWeek,
 				observed_names: names,
 			});
-			toast.success(`已人工覆写为 ${response.count} 人到场。`);
-			setManualText("");
+			toast.success(`已按该列表覆写为 ${response.count} 人到场。`);
+			setRosterText("");
+			switchSeminarView("override");
 			await refetch();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : "人工调整失败。");
+			toast.error(err instanceof Error ? err.message : "覆写到场名单失败。");
 		} finally {
 			setIsSubmitting(false);
 		}
 	};
+
+	// Without an override the effective roster already is the clock-in list, so
+	// the page always falls back to it and the badge stays truthful.
+	const effectiveView: SeminarView = seminar?.has_override ? seminarView : "flow";
+	const showingFlow = effectiveView === "flow";
+	const displayedAttended = showingFlow
+		? seminar?.flow_attended ?? []
+		: seminar?.attended ?? [];
+	const displayedAbsent = showingFlow
+		? seminar?.flow_absent ?? []
+		: seminar?.absent ?? [];
 
 	if (!semester) {
 		return (
@@ -328,13 +331,18 @@ function AttendancePageContent() {
 							{seminar ? (
 								<div className="space-y-3 text-sm">
 									<div>
-										<span className="font-medium">已出勤（{seminar.attended.length}）：</span>
-										{seminar.attended.join("、") || "无"}
+										<span className="font-medium">已出勤（{displayedAttended.length}）：</span>
+										{displayedAttended.join("、") || "无"}
+										{showingFlow && displayedAttended.length === 0 ? (
+											<span className="ml-1 text-muted-foreground">
+												（该周还没有打卡流水记录）
+											</span>
+										) : null}
 									</div>
 									<div>
-										<span className="font-medium">未出勤（{seminar.absent.length}）：</span>
-										<span className={seminar.absent.length ? "text-rose-600 dark:text-rose-400" : ""}>
-											{seminar.absent.join("、") || "无"}
+										<span className="font-medium">未出勤（{displayedAbsent.length}）：</span>
+										<span className={displayedAbsent.length ? "text-rose-600 dark:text-rose-400" : ""}>
+											{displayedAbsent.join("、") || "无"}
 										</span>
 									</div>
 									<div>
@@ -345,15 +353,23 @@ function AttendancePageContent() {
 										<span className="font-medium">课程豁免：</span>
 										{seminar.course_exempt.join("、") || "无"}
 									</div>
-									<div className="flex items-center gap-2">
+									<div className="flex flex-wrap items-center gap-2">
 										<span className="font-medium">数据来源：</span>
 										<Badge variant="secondary">
-											{seminar.source === "flow"
-												? "打卡流水"
-												: seminar.source === "relay"
-													? "群接龙"
-													: "人工调整"}
+											{showingFlow ? "打卡流水" : "人工调整"}
 										</Badge>
+										{seminar.has_override ? (
+											<Toggle
+												variant="outline"
+												size="sm"
+												pressed={showingFlow}
+												onPressedChange={(pressed) =>
+													switchSeminarView(pressed ? "flow" : "override")
+												}
+											>
+												显示打卡流水
+											</Toggle>
+										) : null}
 									</div>
 								</div>
 							) : (
@@ -387,33 +403,21 @@ function AttendancePageContent() {
 								)}
 							</div>
 
-							<div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
-								<div className="space-y-2">
-									<Label htmlFor="relay-text">群接龙内容</Label>
-									<Textarea
-										id="relay-text"
-										rows={5}
-										placeholder={"1. 张三\n2. 李四"}
-										value={relayText}
-										onChange={(event) => setRelayText(event.target.value)}
-									/>
-									<Button variant="outline" onClick={handleRelay} disabled={isSubmitting}>
-										按接龙覆写出勤
-									</Button>
-								</div>
-								<div className="space-y-2">
-									<Label htmlFor="manual-text">人工到场名单</Label>
-									<Textarea
-										id="manual-text"
-										rows={5}
-										placeholder="张三、李四、王五"
-										value={manualText}
-										onChange={(event) => setManualText(event.target.value)}
-									/>
-									<Button variant="outline" onClick={handleManual} disabled={isSubmitting}>
-										人工覆写名单
-									</Button>
-								</div>
+							<div className="space-y-2 border-t pt-4">
+								<Label htmlFor="roster-text">实际到场名单</Label>
+								<Textarea
+									id="roster-text"
+									rows={5}
+									placeholder={"张三\n李四\n王五"}
+									value={rosterText}
+									onChange={(event) => setRosterText(event.target.value)}
+								/>
+								<p className="text-xs text-muted-foreground">
+									每行一个姓名，粘贴后按该列表整周覆写。
+								</p>
+								<Button variant="outline" onClick={handleOverwrite} disabled={isSubmitting}>
+									按该列表覆写
+								</Button>
 							</div>
 						</CardContent>
 					</Card>

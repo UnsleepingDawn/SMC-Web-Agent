@@ -76,32 +76,6 @@ def _expected_names(db: Session, semester_id: UUID) -> List[str]:
     return sorted({str(row.name) for row in rows if row.name})
 
 
-def _parse_relay(text: str) -> List[str]:
-    names: List[str] = []
-    seen: set[str] = set()
-    for raw_line in (text or "").splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        marker = "." if "." in line else ("．" if "．" in line else None)
-        if marker is None:
-            continue
-        after = line.split(marker, 1)[1].strip()
-        if not after:
-            continue
-        name = after.split()[0].strip()
-        if name and name not in seen:
-            seen.add(name)
-            names.append(name)
-    return names
-
-
-class RelayRequest(BaseModel):
-    semester_id: str
-    week: int
-    text: str
-
-
 class ManualRequest(BaseModel):
     semester_id: str
     week: int
@@ -259,8 +233,6 @@ def build_seminar_summary(db: Session, semester, week: int) -> Dict[str, Any]:
     records = seminar_attendance_crud.list_by_week(
         db, semester_id=semester.id, week=week
     )
-    observed = sorted({record.member_name for record in records if record.observed})
-    sources = {record.member_name: record.source for record in records}
 
     leaves = seminar_leave_crud.list_by_week(db, semester_id=semester.id, week=week)
     leave_names = {str(row.member_name) for row in leaves}
@@ -273,15 +245,36 @@ def build_seminar_summary(db: Session, semester, week: int) -> Dict[str, Any]:
         {str(entry.member_name) for entry in schedule if entry.period == period}
     )
 
-    observed_set = set(observed)
     course_set = set(course_exempt)
-    absent = [
-        name
-        for name in expected
-        if name not in observed_set
-        and name not in leave_names
-        and name not in course_set
-    ]
+
+    def absent_from(observed_names: set) -> List[str]:
+        return [
+            name
+            for name in expected
+            if name not in observed_names
+            and name not in leave_names
+            and name not in course_set
+        ]
+
+    # The synced clock-in rows and the manual override rows are kept side by
+    # side. The effective roster prefers the override; without one it is
+    # simply the clock-in list. The page can display either.
+    flow_attended = sorted(
+        {
+            record.member_name
+            for record in records
+            if record.observed and record.source == "flow"
+        }
+    )
+    override_attended = sorted(
+        {
+            record.member_name
+            for record in records
+            if record.observed and record.source != "flow"
+        }
+    )
+    has_override = bool(override_attended)
+    attended = override_attended if has_override else flow_attended
 
     return {
         "week": week,
@@ -289,15 +282,16 @@ def build_seminar_summary(db: Session, semester, week: int) -> Dict[str, Any]:
         "seminar_date": seminar_date.isoformat(),
         "period": period,
         "expected": expected,
-        "attended": observed,
-        "absent": absent,
+        "attended": attended,
+        "absent": absent_from(set(attended)),
+        "flow_attended": flow_attended,
+        "flow_absent": absent_from(set(flow_attended)),
+        "has_override": has_override,
         "leave": [
             {"member_name": row.member_name, "reason": row.reason} for row in leaves
         ],
         "course_exempt": course_exempt,
-        "source": "manual"
-        if any(value == "manual" for value in sources.values())
-        else ("relay" if any(value == "relay" for value in sources.values()) else "flow"),
+        "source": "manual" if has_override else "flow",
     }
 
 
@@ -371,32 +365,6 @@ def build_seminar_missed(db: Session, semester, week: int) -> Dict[str, Any]:
     return {"week": week, "chart": chart}
 
 
-@attendance_router.post("/seminar/relay")
-def submit_seminar_relay(
-    payload: RelayRequest,
-    current_user: CurrentUser = Depends(get_required_user),
-    db: Session = Depends(get_db),
-):
-    """Replace the week's attendance with names parsed from a group relay."""
-    semester = _resolve_semester(db, payload.semester_id)
-    names = _parse_relay(payload.text)
-    if not names:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="没有解析到任何姓名"
-        )
-    weekday = _seminar_weekday(db, semester, payload.week)
-    seminar_date = week_date(semester.start_date, payload.week, weekday)
-    count = seminar_attendance_crud.replace_week(
-        db,
-        semester_id=semester.id,
-        week=payload.week,
-        observed_names=names,
-        source="relay",
-        seminar_date=seminar_date,
-    )
-    return {"count": count, "names": names}
-
-
 @attendance_router.put("/seminar/manual")
 def set_seminar_manual(
     payload: ManualRequest,
@@ -408,7 +376,7 @@ def set_seminar_manual(
     names = [name.strip() for name in payload.observed_names if name.strip()]
     weekday = _seminar_weekday(db, semester, payload.week)
     seminar_date = week_date(semester.start_date, payload.week, weekday)
-    count = seminar_attendance_crud.replace_week(
+    count = seminar_attendance_crud.replace_override_rows(
         db,
         semester_id=semester.id,
         week=payload.week,

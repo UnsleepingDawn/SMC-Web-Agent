@@ -313,11 +313,16 @@ export interface SeminarAttendanceSummary {
 	seminar_date: string;
 	period: string;
 	expected: string[];
+	/** Effective roster: the override list when one exists, else the clock-in list. */
 	attended: string[];
 	absent: string[];
+	/** Synced clock-in roster, kept so the page can switch back to it. */
+	flow_attended: string[];
+	flow_absent: string[];
+	has_override: boolean;
 	leave: { member_name: string; reason: string | null }[];
 	course_exempt: string[];
-	source: "flow" | "relay" | "manual";
+	source: "flow" | "manual";
 }
 
 export interface ScheduleEntry {

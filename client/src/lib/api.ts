@@ -483,17 +483,6 @@ export function getSeminarAttendance(
     return fetchFromApi(`/api/attendance/seminar?semester_id=${semesterId}&week=${week}`);
 }
 
-export function submitSeminarRelay(payload: {
-    semester_id: string;
-    week: number;
-    text: string;
-}): Promise<{ count: number; names: string[] }> {
-    return fetchFromApi('/api/attendance/seminar/relay', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-    });
-}
-
 export function setSeminarManual(payload: {
     semester_id: string;
     week: number;
