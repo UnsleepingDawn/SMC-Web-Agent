@@ -320,6 +320,9 @@ export interface SeminarAttendanceSummary {
 	flow_attended: string[];
 	flow_absent: string[];
 	has_override: boolean;
+	/** True when the week's leave list was overwritten by hand. */
+	has_leave_override: boolean;
+	/** Effective leave list: the manual one when it exists, else the synced one. */
 	leave: { member_name: string; reason: string | null }[];
 	course_exempt: string[];
 	source: "flow" | "manual";

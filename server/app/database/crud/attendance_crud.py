@@ -272,32 +272,47 @@ class SeminarLeaveCreate(BaseModel):
     week: int
     member_name: str
     reason: Optional[str] = None
+    source: str = FLOW_SOURCE
 
 
 class CRUDSeminarLeave(CRUDBase[SeminarLeave, SeminarLeaveCreate, BaseModel]):
     def list_by_week(
         self, db: Session, *, semester_id: UUID, week: int
     ) -> List[SeminarLeave]:
-        return (
+        """The effective leave list for one week.
+
+        A week holding any override row is read from the override rows alone,
+        so the synced list only applies to weeks without an overwrite.
+        """
+        rows = (
             db.query(SeminarLeave)
             .filter(SeminarLeave.semester_id == semester_id, SeminarLeave.week == week)
             .order_by(SeminarLeave.member_name)
             .all()
         )
+        override = [row for row in rows if row.source != FLOW_SOURCE]
+        return override or rows
 
     def weeks_by_member(self, db: Session, *, semester_id: UUID) -> Dict[str, set]:
-        """The weeks each member was on leave, keyed by name."""
+        """The weeks each member was on leave, keyed by name.
+
+        A week holding any override row is read from the override rows alone,
+        so the synced list only applies to weeks without an overwrite.
+        """
         rows = (
-            db.query(SeminarLeave.member_name, SeminarLeave.week)
+            db.query(SeminarLeave.member_name, SeminarLeave.week, SeminarLeave.source)
             .filter(SeminarLeave.semester_id == semester_id)
             .all()
         )
+        override_weeks = {int(week) for _, week, source in rows if source != FLOW_SOURCE}
         weeks: Dict[str, set] = {}
-        for name, week in rows:
-            weeks.setdefault(str(name), set()).add(week)
+        for name, week, source in rows:
+            if source == FLOW_SOURCE and int(week) in override_weeks:
+                continue
+            weeks.setdefault(str(name), set()).add(int(week))
         return weeks
 
-    def replace_week(
+    def replace_flow_rows(
         self,
         db: Session,
         *,
@@ -305,12 +320,49 @@ class CRUDSeminarLeave(CRUDBase[SeminarLeave, SeminarLeaveCreate, BaseModel]):
         week: int,
         rows: Iterable[SeminarLeaveCreate],
     ) -> int:
+        """Replace the synced rows only, leaving override rows untouched."""
         db.query(SeminarLeave).filter(
-            SeminarLeave.semester_id == semester_id, SeminarLeave.week == week
+            SeminarLeave.semester_id == semester_id,
+            SeminarLeave.week == week,
+            SeminarLeave.source == FLOW_SOURCE,
         ).delete(synchronize_session=False)
         count = 0
         for row in rows:
             db.add(SeminarLeave(**row.model_dump()))
+            count += 1
+        db.commit()
+        return count
+
+    def replace_override_rows(
+        self,
+        db: Session,
+        *,
+        semester_id: UUID,
+        week: int,
+        member_names: Iterable[str],
+        source: str = "manual",
+    ) -> int:
+        """Replace the week's override rows, keeping the synced rows intact.
+
+        The synced rows stay around so a later sync does not resurrect the old
+        leave list over an explicit manual overwrite.
+        """
+        db.query(SeminarLeave).filter(
+            SeminarLeave.semester_id == semester_id,
+            SeminarLeave.week == week,
+            SeminarLeave.source != FLOW_SOURCE,
+        ).delete(synchronize_session=False)
+        count = 0
+        for name in member_names:
+            db.add(
+                SeminarLeave(
+                    semester_id=semester_id,
+                    week=week,
+                    member_name=name,
+                    reason=None,
+                    source=source,
+                )
+            )
             count += 1
         db.commit()
         return count

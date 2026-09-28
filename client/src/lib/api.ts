@@ -486,8 +486,14 @@ export function getSeminarAttendance(
 export function setSeminarManual(payload: {
     semester_id: string;
     week: number;
-    observed_names: string[];
-}): Promise<{ count: number; names: string[] }> {
+    observed_names?: string[];
+    leave_names?: string[];
+}): Promise<{
+    count: number;
+    names: string[];
+    leave_count: number;
+    leave_names: string[];
+}> {
     return fetchFromApi('/api/attendance/seminar/manual', {
         method: 'PUT',
         body: JSON.stringify(payload),

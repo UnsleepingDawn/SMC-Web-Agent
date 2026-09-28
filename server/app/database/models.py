@@ -247,7 +247,9 @@ class SeminarPresentation(Base):
 class SeminarLeave(Base):
     __tablename__ = "seminar_leaves"
     __table_args__ = (
-        UniqueConstraint("semester_id", "week", "member_name", name="uq_seminar_leave"),
+        UniqueConstraint(
+            "semester_id", "week", "member_name", "source", name="uq_seminar_leave"
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -257,6 +259,8 @@ class SeminarLeave(Base):
     week = Column(Integer, nullable=False, index=True)
     member_name = Column(String, nullable=False)
     reason = Column(Text, nullable=True)
+    # How the row was produced: the synced leave bitable, or a manual override.
+    source = Column(String, nullable=False, default="flow")
 
 
 class WeeklyReport(Base):
@@ -314,7 +318,7 @@ class SeminarAttendanceRecord(Base):
     __tablename__ = "seminar_attendance_records"
     __table_args__ = (
         UniqueConstraint(
-            "semester_id", "week", "member_name", name="uq_seminar_attendance"
+            "semester_id", "week", "member_name", "source", name="uq_seminar_attendance"
         ),
     )
 

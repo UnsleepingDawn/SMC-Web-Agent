@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import os
 from io import BytesIO
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from app.auth.dependencies import get_required_user
@@ -76,10 +76,20 @@ def _expected_names(db: Session, semester_id: UUID) -> List[str]:
     return sorted({str(row.name) for row in rows if row.name})
 
 
+def _clean_names(names: Optional[List[str]]) -> List[str]:
+    """Trim blank entries from a pasted roster, keeping the order."""
+    if not names:
+        return []
+    return [name.strip() for name in names if name and name.strip()]
+
+
 class ManualRequest(BaseModel):
     semester_id: str
     week: int
-    observed_names: List[str]
+    # `None` means "leave this roster alone"; the attendance and leave lists
+    # are overwritten independently.
+    observed_names: Optional[List[str]] = None
+    leave_names: Optional[List[str]] = None
 
 
 @attendance_router.get("/group")
@@ -234,8 +244,10 @@ def build_seminar_summary(db: Session, semester, week: int) -> Dict[str, Any]:
         db, semester_id=semester.id, week=week
     )
 
+    # The effective leave list prefers a manual overwrite over the synced rows.
     leaves = seminar_leave_crud.list_by_week(db, semester_id=semester.id, week=week)
     leave_names = {str(row.member_name) for row in leaves}
+    has_leave_override = any(row.source != "flow" for row in leaves)
 
     period = safe_day_period(semester.default_seminar_start_time) or "晚上"
     schedule = schedule_entry_crud.list_by_weekday(
@@ -287,6 +299,7 @@ def build_seminar_summary(db: Session, semester, week: int) -> Dict[str, Any]:
         "flow_attended": flow_attended,
         "flow_absent": absent_from(set(flow_attended)),
         "has_override": has_override,
+        "has_leave_override": has_leave_override,
         "leave": [
             {"member_name": row.member_name, "reason": row.reason} for row in leaves
         ],
@@ -371,20 +384,44 @@ def set_seminar_manual(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
 ):
-    """Overwrite the week's attendance with an explicit list of names."""
+    """Overwrite the week's attendance and/or leave list with explicit names.
+
+    Each roster is overwritten only when its list is present in the payload, so
+    the page can update the attendance and leave lists independently.
+    """
     semester = _resolve_semester(db, payload.semester_id)
-    names = [name.strip() for name in payload.observed_names if name.strip()]
-    weekday = _seminar_weekday(db, semester, payload.week)
-    seminar_date = week_date(semester.start_date, payload.week, weekday)
-    count = seminar_attendance_crud.replace_override_rows(
-        db,
-        semester_id=semester.id,
-        week=payload.week,
-        observed_names=names,
-        source="manual",
-        seminar_date=seminar_date,
-    )
-    return {"count": count, "names": names}
+    names = _clean_names(payload.observed_names)
+    leave_names = _clean_names(payload.leave_names)
+
+    count = len(names)
+    if payload.observed_names is not None:
+        weekday = _seminar_weekday(db, semester, payload.week)
+        seminar_date = week_date(semester.start_date, payload.week, weekday)
+        count = seminar_attendance_crud.replace_override_rows(
+            db,
+            semester_id=semester.id,
+            week=payload.week,
+            observed_names=names,
+            source="manual",
+            seminar_date=seminar_date,
+        )
+
+    leave_count = len(leave_names)
+    if payload.leave_names is not None:
+        leave_count = seminar_leave_crud.replace_override_rows(
+            db,
+            semester_id=semester.id,
+            week=payload.week,
+            member_names=leave_names,
+            source="manual",
+        )
+
+    return {
+        "count": count,
+        "names": names,
+        "leave_count": leave_count,
+        "leave_names": leave_names,
+    }
 
 
 @attendance_router.get("/leaves")

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Download, Loader2 } from "lucide-react";
 import { AttendanceBarChart } from "@/components/attendance/AttendanceBarChart";
@@ -77,8 +77,10 @@ function AttendancePageContent() {
 	}, [refetch, refetchMissed]);
 
 	const [rosterText, setRosterText] = useState("");
+	const [leaveText, setLeaveText] = useState("");
 	const [seminarView, setSeminarView] = useState<SeminarView>("override");
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [isLeaveSubmitting, setIsLeaveSubmitting] = useState(false);
 	const [isExporting, setIsExporting] = useState(false);
 	const [onlyAbsent3, setOnlyAbsent3] = useState(true);
 
@@ -93,6 +95,19 @@ function AttendancePageContent() {
 		setSeminarView(nextView);
 		if (semester) writeSeminarView(semester.id, activeWeek, nextView);
 	};
+
+	// Prefill both rosters from the effective lists once per week. The sentinel
+	// keeps a later refetch (e.g. after a sync) from clobbering what the user is
+	// typing into the textareas.
+	const prefilledKey = useRef("");
+	useEffect(() => {
+		if (!semester || !seminar) return;
+		const key = `${semester.id}:${seminar.week}:${seminar.seminar_date}`;
+		if (prefilledKey.current === key) return;
+		prefilledKey.current = key;
+		setRosterText(seminar.attended.join("\n"));
+		setLeaveText(seminar.leave.map((item) => item.member_name).join("\n"));
+	}, [semester, seminar]);
 
 	useEffect(() => {
 		getSemesters()
@@ -151,6 +166,29 @@ function AttendancePageContent() {
 			toast.error(err instanceof Error ? err.message : "覆写到场名单失败。");
 		} finally {
 			setIsSubmitting(false);
+		}
+	};
+
+	const handleOverwriteLeave = async () => {
+		if (!semester) return;
+		const names = parseNameLines(leaveText);
+		if (names.length === 0) {
+			toast.error("请粘贴实际请假名单。");
+			return;
+		}
+		setIsLeaveSubmitting(true);
+		try {
+			const response = await setSeminarManual({
+				semester_id: semester.id,
+				week: activeWeek,
+				leave_names: names,
+			});
+			toast.success(`已按该列表覆写为 ${response.leave_count} 人请假。`);
+			await refetch();
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "覆写请假名单失败。");
+		} finally {
+			setIsLeaveSubmitting(false);
 		}
 	};
 
@@ -368,7 +406,7 @@ function AttendancePageContent() {
 													switchSeminarView(pressed ? "flow" : "override")
 												}
 											>
-												显示打卡流水
+												{showingFlow ? "显示人工调整" : "显示打卡流水"}
 											</Toggle>
 										) : null}
 									</div>
@@ -404,21 +442,46 @@ function AttendancePageContent() {
 								)}
 							</div>
 
-							<div className="space-y-2 border-t pt-4">
-								<Label htmlFor="roster-text">实际到场名单</Label>
-								<Textarea
-									id="roster-text"
-									rows={5}
-									placeholder={"张三\n李四\n王五"}
-									value={rosterText}
-									onChange={(event) => setRosterText(event.target.value)}
-								/>
-								<p className="text-xs text-muted-foreground">
-									每行一个姓名，粘贴后按该列表整周覆写。
-								</p>
-								<Button variant="outline" onClick={handleOverwrite} disabled={isSubmitting}>
-									按该列表覆写
-								</Button>
+							<div className="grid gap-4 border-t pt-4 md:grid-cols-2">
+								<div className="space-y-2">
+									<Label htmlFor="roster-text">实际到场名单</Label>
+									<Textarea
+										id="roster-text"
+										rows={5}
+										placeholder={"张三\n李四\n王五"}
+										value={rosterText}
+										onChange={(event) => setRosterText(event.target.value)}
+									/>
+									<p className="text-xs text-muted-foreground">
+										每行一个姓名，粘贴后按该列表整周覆写。
+									</p>
+									<Button variant="outline" onClick={handleOverwrite} disabled={isSubmitting}>
+										按该列表覆写
+									</Button>
+								</div>
+								<div className="space-y-2">
+									<Label htmlFor="leave-text">
+										实际请假名单
+										{seminar?.has_leave_override ? "（已人工调整）" : ""}
+									</Label>
+									<Textarea
+										id="leave-text"
+										rows={5}
+										placeholder={"张三\n李四\n王五"}
+										value={leaveText}
+										onChange={(event) => setLeaveText(event.target.value)}
+									/>
+									<p className="text-xs text-muted-foreground">
+										每行一个姓名，粘贴后按该列表整周覆写。
+									</p>
+									<Button
+										variant="outline"
+										onClick={handleOverwriteLeave}
+										disabled={isLeaveSubmitting}
+									>
+										按该列表覆写
+									</Button>
+								</div>
 							</div>
 						</CardContent>
 					</Card>

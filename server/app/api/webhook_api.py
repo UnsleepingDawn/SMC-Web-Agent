@@ -247,7 +247,7 @@ def _apply_seminar_leaves(
                 reason=item.get("reason") or None,
             )
         )
-    return seminar_leave_crud.replace_week(
+    return seminar_leave_crud.replace_flow_rows(
         db, semester_id=semester_id, week=week, rows=rows
     )
 
