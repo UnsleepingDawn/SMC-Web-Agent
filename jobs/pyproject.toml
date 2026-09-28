@@ -26,7 +26,9 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "cryptography>=44.0.0",
     "types-psutil>=7.0.0.20250601",
-    "pulp>=2.9.0",
+    # PuLP 4.0 是用 Rust 重写的内核，删掉了 LpVariable.dicts/PULP_CBC_CMD/LpStatus
+    # 等旧 API 并移出自带 CBC，group_meeting_solver 用的仍是 3.x 的接口，暂锁 <4。
+    "pulp>=2.9.0,<4",
 ]
 
 [tool.uv]
