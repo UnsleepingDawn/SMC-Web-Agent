@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from io import BytesIO
-from typing import Optional
+from typing import List, Optional
 
 from app.auth.dependencies import get_required_user
 from app.database.crud.member_crud import MemberUpdate, member as member_crud
@@ -44,14 +44,15 @@ class MemberRow(BaseModel):
 @member_router.get("")
 def list_members(
     search: Optional[str] = Query(None),
-    advisor: Optional[str] = Query(None),
-    grade: Optional[str] = Query(None),
-    enrollment_status: Optional[str] = Query(None),
+    advisor: Optional[List[str]] = Query(None),
+    grade: Optional[List[str]] = Query(None),
+    enrollment_status: Optional[List[str]] = Query(None),
     need_attendance: Optional[bool] = Query(None),
     is_active: Optional[bool] = Query(None),
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
 ):
+    """List members; ``advisor`` / ``grade`` / ``enrollment_status`` repeat to OR several values."""
     rows = member_crud.list_filtered(
         db,
         search=search,

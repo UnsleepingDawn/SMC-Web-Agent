@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/common/PageHeader";
-import { MemberFilterBar, MemberFilterState, EMPTY_FILTERS } from "@/components/members/MemberFilterBar";
+import { MemberFilterBar } from "@/components/members/MemberFilterBar";
 import { MemberSortControl } from "@/components/members/MemberSortControl";
 import { MemberTable } from "@/components/members/MemberTable";
 import { MemberEditDialog } from "@/components/members/MemberEditDialog";
@@ -15,6 +15,11 @@ import { useSemesters } from "@/hooks/useSemesters";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { exportSignatureSheet } from "@/lib/api";
 import { Member } from "@/lib/schema";
+import {
+	EMPTY_FILTERS,
+	MemberFilterState,
+	deriveNeedAttendance,
+} from "@/lib/memberFilter";
 import { MemberSortRule, sortMembers } from "@/lib/memberSort";
 import { toast } from "sonner";
 
@@ -24,13 +29,18 @@ export default function MembersPage() {
 	const [editing, setEditing] = useState<Member | null>(null);
 	const [isExporting, setIsExporting] = useState(false);
 
-	const { members, isLoading, error, refetch } = useMembers({
+	/** Empty filter fields are folded to `undefined` so the API sees no constraint. */
+	const memberQuery = {
 		search: filters.search || undefined,
-		advisor: filters.advisor || undefined,
-		grade: filters.grade || undefined,
-		enrollment_status: filters.enrollment_status || undefined,
-		need_attendance: filters.need_attendance || undefined,
-	});
+		advisor: filters.advisor.length ? filters.advisor : undefined,
+		grade: filters.grade.length ? filters.grade : undefined,
+		enrollment_status: filters.enrollment_status.length
+			? filters.enrollment_status
+			: undefined,
+		need_attendance: deriveNeedAttendance(filters.need_attendance),
+	};
+
+	const { members, isLoading, error, refetch } = useMembers(memberQuery);
 	const { filters: options } = useMemberFilters();
 	const { semesters } = useSemesters();
 	const { semester, currentWeek } = useCurrentSemester();

@@ -6,9 +6,9 @@ import { Member } from "@/lib/schema";
 
 export interface MemberQuery {
     search?: string;
-    advisor?: string;
-    grade?: string;
-    enrollment_status?: string;
+    advisor?: string[];
+    grade?: string[];
+    enrollment_status?: string[];
     need_attendance?: boolean;
     is_active?: boolean;
 }

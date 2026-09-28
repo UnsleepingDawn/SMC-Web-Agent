@@ -1,7 +1,7 @@
 """Member master data queries."""
 
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
@@ -25,6 +25,20 @@ def teacher_department_name() -> str:
         os.getenv("FEISHU_TEACHER_DEPARTMENT_NAME", "").strip()
         or DEFAULT_TEACHER_DEPARTMENT
     )
+
+
+def _as_value_list(value: Optional[Union[str, List[str]]]) -> Optional[List[str]]:
+    """Normalize a filter value to a list; ``None`` means "no filter".
+
+    A bare string must become a one-element list rather than be iterated
+    character by character, or callers passing ``enrollment_status="在读"``
+    would silently match nothing once the query uses ``IN``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return [value]
+    return list(value)
 
 
 class MemberCreate(BaseModel):
@@ -69,12 +83,22 @@ class CRUDMember(CRUDBase[Member, MemberCreate, MemberUpdate]):
         db: Session,
         *,
         search: Optional[str] = None,
-        advisor: Optional[str] = None,
-        grade: Optional[str] = None,
-        enrollment_status: Optional[str] = None,
+        advisor: Optional[Union[str, List[str]]] = None,
+        grade: Optional[Union[str, List[str]]] = None,
+        enrollment_status: Optional[Union[str, List[str]]] = None,
         need_attendance: Optional[bool] = None,
         is_active: Optional[bool] = None,
     ) -> List[Member]:
+        """Filter the roster; the three text filters accept a scalar or a list.
+
+        The API passes lists (a repeated query parameter) so several values of
+        one field match as OR, while different fields still AND together.
+        Internal callers keep passing plain strings, so scalars are accepted too.
+        """
+        advisor_values = _as_value_list(advisor)
+        grade_values = _as_value_list(grade)
+        status_values = _as_value_list(enrollment_status)
+
         query = db.query(Member)
         if search:
             pattern = f"%{search.strip()}%"
@@ -85,12 +109,12 @@ class CRUDMember(CRUDBase[Member, MemberCreate, MemberUpdate]):
                     Member.advisor.ilike(pattern),
                 )
             )
-        if advisor:
-            query = query.filter(Member.advisor == advisor)
-        if grade:
-            query = query.filter(Member.grade == grade)
-        if enrollment_status:
-            query = query.filter(Member.enrollment_status == enrollment_status)
+        if advisor_values:
+            query = query.filter(Member.advisor.in_(advisor_values))
+        if grade_values:
+            query = query.filter(Member.grade.in_(grade_values))
+        if status_values:
+            query = query.filter(Member.enrollment_status.in_(status_values))
         if need_attendance is not None:
             query = query.filter(Member.need_attendance.is_(need_attendance))
         if is_active is not None:

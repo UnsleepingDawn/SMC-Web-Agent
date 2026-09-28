@@ -171,11 +171,22 @@ export function deleteSemester(semesterId: string): Promise<{ message: string }>
 
 /* ------------------------------------------------------------------ members */
 
-export function getMembers(params: Record<string, string | boolean | undefined> = {}): Promise<{
+export function getMembers(
+    params: Record<string, string | boolean | string[] | undefined> = {},
+): Promise<{
     members: Member[];
 }> {
     const query = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
+        // Array values repeat the parameter so one field can match several values.
+        if (Array.isArray(value)) {
+            value.forEach((item) => {
+                if (item !== undefined && item !== null && item !== '') {
+                    query.append(key, String(item));
+                }
+            });
+            return;
+        }
         if (value !== undefined && value !== '' && value !== null) {
             query.set(key, String(value));
         }
