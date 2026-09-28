@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { Copy, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -11,7 +11,11 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { usePosterData } from "@/hooks/usePosterData";
-import { downloadElementAsPng, posterFilename } from "@/lib/posterExport";
+import {
+	copyElementAsPng,
+	downloadElementAsPng,
+	posterFilename,
+} from "@/lib/posterExport";
 import { Semester } from "@/lib/schema";
 import { toast } from "sonner";
 import { POSTER_WIDTH, WeeklyPoster } from "./WeeklyPoster";
@@ -55,6 +59,7 @@ function PosterDialogBody({
 	const [scale, setScale] = useState(1);
 	const [canvasHeight, setCanvasHeight] = useState(0);
 	const [isExporting, setIsExporting] = useState(false);
+	const [isCopying, setIsCopying] = useState(false);
 
 	// The poster is a fixed 1080 px wide, so the preview shrinks it to whatever
 	// room the dialog has. The scale lives on a wrapper: the exported node itself
@@ -79,6 +84,10 @@ function PosterDialogBody({
 		return () => observer.disconnect();
 	}, [data.isLoading]);
 
+	// Both export paths rasterise the same node and share one DOM, so they never
+	// run at the same time.
+	const isBusy = isExporting || isCopying;
+
 	const handleDownload = async () => {
 		const node = canvasRef.current;
 		if (!node) {
@@ -93,6 +102,23 @@ function PosterDialogBody({
 			toast.error(error instanceof Error ? error.message : "导出海报失败。");
 		} finally {
 			setIsExporting(false);
+		}
+	};
+
+	const handleCopy = async () => {
+		const node = canvasRef.current;
+		if (!node) {
+			toast.error("海报还没有准备好，请稍候再试。");
+			return;
+		}
+		setIsCopying(true);
+		try {
+			await copyElementAsPng(node);
+			toast.success("海报已复制到剪贴板，可直接粘贴。");
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : "复制海报失败。");
+		} finally {
+			setIsCopying(false);
 		}
 	};
 
@@ -132,10 +158,22 @@ function PosterDialogBody({
 			</div>
 
 			<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-				<Button variant="outline" onClick={onClose} disabled={isExporting}>
+				<Button variant="outline" onClick={onClose} disabled={isBusy}>
 					关闭
 				</Button>
-				<Button onClick={handleDownload} disabled={isExporting || data.isLoading}>
+				<Button
+					variant="secondary"
+					onClick={handleCopy}
+					disabled={isBusy || data.isLoading}
+				>
+					{isCopying ? (
+						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+					) : (
+						<Copy className="mr-2 h-4 w-4" />
+					)}
+					复制海报
+				</Button>
+				<Button onClick={handleDownload} disabled={isBusy || data.isLoading}>
 					{isExporting ? (
 						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 					) : (
@@ -163,7 +201,7 @@ export function WeeklyPosterDialog({
 				<DialogHeader>
 					<DialogTitle>周报统计海报</DialogTitle>
 					<DialogDescription>
-						第 {week} 周的组会、周报与考勤已排成一张长图，下载后可分享。
+						第 {week} 周的组会、周报与考勤已排成一张长图，下载或复制后即可分享。
 					</DialogDescription>
 				</DialogHeader>
 				<PosterDialogBody
