@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +47,19 @@ def _slot_texts(value: Any) -> List[str]:
 
 
 def schedule_rows(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Flatten each member's week into ``weekday/period/section`` rows."""
+    """Flatten each member's week into ``weekday/period/section`` rows.
+
+    Identical slots are collapsed. The table is keyed by ``semester_id`` +
+    weekday + period + section + member, and the server writes the payload in
+    one transaction, so a single repeated slot would raise a unique-constraint
+    error and throw away the whole term's timetable. That happens in practice:
+    one member can appear as two records (or one cell can list a slot twice),
+    which is a data-entry slip with no extra meaning -- two courses cannot sit
+    in the same slot for the same person.
+    """
     rows: List[Dict[str, Any]] = []
+    seen: Set[Tuple[int, str, str, str]] = set()
+    duplicates = 0
     for record in records:
         fields = record.get("fields") or {}
         name = _member_name(fields.get(FIELD_NAME))
@@ -62,13 +73,20 @@ def schedule_rows(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 if len(parts) != 2:
                     continue
                 period, section = parts
+                key = (weekday, period.strip(), section.strip(), name)
+                if key in seen:
+                    duplicates += 1
+                    continue
+                seen.add(key)
                 rows.append(
                     {
-                        "weekday": weekday,
-                        "period": period.strip(),
-                        "section": section.strip(),
-                        "member_name": name,
+                        "weekday": key[0],
+                        "period": key[1],
+                        "section": key[2],
+                        "member_name": key[3],
                     }
                 )
+    if duplicates:
+        logger.warning("Skipped %d duplicated schedule slots", duplicates)
     logger.info("Parsed %d schedule entries", len(rows))
     return rows
