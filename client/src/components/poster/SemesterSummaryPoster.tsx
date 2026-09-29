@@ -94,7 +94,7 @@ function formatGeneratedAt(date: Date): string {
  */
 function MetricCell({ text }: { text: MetricCompactText }) {
 	return (
-		<td className="px-[16px] py-[18px] align-top">
+		<td className="px-[16px] py-[18px] text-center align-middle">
 			<span className="text-[22px] font-semibold tabular-nums">
 				{formatRate(text.rate)}
 			</span>
@@ -216,7 +216,7 @@ export function SemesterSummaryPoster({
 									{COLUMNS.map((column) => (
 										<th
 											key={column.label}
-											className="px-[16px] py-[20px] text-left align-top text-[26px] font-medium"
+											className="px-[16px] py-[20px] text-center align-middle text-[26px] font-medium"
 										>
 											<span className="block">{column.label}</span>
 											{column.format ? (
@@ -231,7 +231,7 @@ export function SemesterSummaryPoster({
 							<tbody>
 								{rows.map((item) => (
 									<tr key={item.row.name} className="border-t border-border">
-										<td className="px-[16px] py-[18px] align-top">
+										<td className="px-[16px] py-[18px] text-center align-middle">
 											{/* Kept in step with the page: the bottom share is called out by
 											    the name alone, since the poster drops the status column. */}
 											<span
@@ -249,13 +249,13 @@ export function SemesterSummaryPoster({
 												</span>
 											) : null}
 										</td>
-										<td className="px-[16px] py-[18px] align-top text-[22px]">
+										<td className="px-[16px] py-[18px] text-center align-middle text-[22px]">
 											{item.row.member?.advisor || "-"}
 										</td>
 										<MetricCell text={dailyCompactText(item.row.daily)} />
 										<MetricCell text={seminarCompactText(item.row.seminar)} />
 										<MetricCell text={reportCompactText(item.row.weekly_report)} />
-										<td className="px-[16px] py-[18px] align-top text-[30px] font-bold tabular-nums">
+										<td className="px-[16px] py-[18px] text-center align-middle text-[30px] font-bold tabular-nums">
 											{formatRate(item.score)}
 										</td>
 									</tr>
