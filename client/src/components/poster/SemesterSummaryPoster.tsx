@@ -71,7 +71,7 @@ const COLUMNS: Column[] = [
 	{ label: "姓名", format: null, width: 168 },
 	{ label: "导师", format: null, width: 136 },
 	{ label: METRIC_LABELS.daily, format: "缺/迟/课", width: 220 },
-	{ label: METRIC_LABELS.seminar, format: "应到/实到", width: 228 },
+	{ label: METRIC_LABELS.seminar, format: "实到/应到", width: 228 },
 	{ label: METRIC_LABELS.weekly_report, format: "已交/未交", width: 216 },
 	{ label: "综合得分", format: null, width: 160 },
 ];

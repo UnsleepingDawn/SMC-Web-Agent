@@ -142,13 +142,19 @@ export function seminarCellText(
 	};
 }
 
-/** Seminar weeks, poster form: `77% (17/13)` for 应到/实到. */
+/**
+ * Seminar weeks, poster form: `43% (6/14)` for 实到/应到.
+ *
+ * Attendance leads, matching the page's own wording (`实到 6 / 应到 14`): the
+ * two renderings print the same two numbers and should not disagree about
+ * which one comes first.
+ */
 export function seminarCompactText(
 	seminar: SemesterSummaryRow["seminar"],
 ): MetricCompactText {
 	return {
 		rate: seminar.rate,
-		counts: [seminar.eligible, seminar.attended],
+		counts: [seminar.attended, seminar.eligible],
 		aside: seminarAside(seminar),
 	};
 }
