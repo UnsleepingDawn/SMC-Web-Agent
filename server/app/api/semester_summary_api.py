@@ -161,10 +161,11 @@ def semester_summary(
         db, db_semester, resolved_end_week, names=sorted(names)
     )
 
-    # Seminars are owed by whoever is on the attendance roster, so a member is
-    # judged on them once there is proof they were on it that semester. Members
-    # with nothing but weekly reports stay out: reporting "matched 0 of 17"
-    # against them would be a verdict on seminars they were never due at.
+    # Seminars are judged from the semester's own rows only -- a clock-in, a
+    # seminar row or a leave -- so the current attendance group never widens
+    # them. Members with nothing but weekly reports stay out too: reporting
+    # "matched 0 of 17" against them would be a verdict on seminars they were
+    # never due at.
     seminar_names = seminar_roster(db, db_semester, daily_names=daily_by_name)
 
     members = {member.name: member for member in member_crud.list_filtered(db)}

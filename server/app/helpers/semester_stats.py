@@ -160,17 +160,14 @@ def seminar_roster(
 ) -> Set[str]:
     """The members whose seminar weeks are on record for the semester.
 
-    Seminars are owed by whoever is on the attendance roster, and the proof of
-    that is a clock-in row for the term, a group seat while the term runs, or a
-    seminar row / leave request. A member with nothing but weekly reports was
-    never asked to attend, so judging them on "missed every week" would be a
-    verdict on seminars that were never theirs to attend.
+    Seminars are owed by whoever was on the attendance roster, and the proof of
+    that is a row of the semester's own: a clock-in, a seminar attendance or a
+    seminar leave. The attendance group is deliberately left out even while the
+    term is running -- it describes who is due *today*, so unioning it in would
+    judge everyone who joined later on seminars that were never theirs. A
+    member with nothing but weekly reports was never asked to attend either.
     """
-    return roster_with_group(
-        db,
-        semester,
-        semester_data_names(db, semester, daily_names=daily_names, report_names=()),
-    )
+    return semester_data_names(db, semester, daily_names=daily_names, report_names=())
 
 
 def seminar_weekday(db: Session, semester: Semester, week: int) -> int:

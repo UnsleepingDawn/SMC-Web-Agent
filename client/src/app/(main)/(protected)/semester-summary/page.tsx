@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Loader2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -46,6 +46,10 @@ import {
 	formatRate,
 	rankRows,
 } from "@/lib/semesterScore";
+import {
+	readSemesterSummaryView,
+	writeSemesterSummaryView,
+} from "@/lib/semesterSummaryView";
 import type { SemesterSummaryRow } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 
@@ -171,7 +175,7 @@ function ReportCell({ report }: { report: SemesterSummaryRow["weekly_report"] })
 
 export default function SemesterSummaryPage() {
 	const { semester: currentSemester, isLoading: isSemesterLoading } = useCurrentSemester();
-	const { semesters } = useSemesters();
+	const { semesters, isLoading: isSemestersLoading } = useSemesters();
 	const { filters: filterOptions } = useMemberFilters();
 
 	/** null means "follow the current semester"; reset whenever the list changes. */
@@ -184,9 +188,56 @@ export default function SemesterSummaryPage() {
 	const [memberFilters, setMemberFilters] = useState<MemberFilterState>(EMPTY_FILTERS);
 	/** Worst first by default: the page exists to surface who needs attention. */
 	const [worstFirst, setWorstFirst] = useState(true);
+	/** False until the stored view has been applied, so it is not overwritten. */
+	const [isViewRestored, setIsViewRestored] = useState(false);
+
+	// The stored view is applied after mount rather than while rendering: reading
+	// localStorage during the first render would make the client's markup differ
+	// from the server's HTML and break hydration.
+	useEffect(() => {
+		const stored = readSemesterSummaryView();
+		setSemesterId(stored.semesterId);
+		setEndWeek(stored.endWeek);
+		setWeights(stored.weights);
+		setMemberFilters(stored.memberFilters);
+		setWorstFirst(stored.worstFirst);
+		setIsViewRestored(true);
+	}, []);
+
+	// Every later change is remembered, so leaving the page and coming back keeps
+	// the same semester, filters, weights and sort direction.
+	useEffect(() => {
+		if (!isViewRestored) return;
+		writeSemesterSummaryView({
+			semesterId,
+			endWeek,
+			weights,
+			memberFilters,
+			worstFirst,
+		});
+	}, [isViewRestored, semesterId, endWeek, weights, memberFilters, worstFirst]);
+
+	/** The stored semester, or null when the list no longer holds it. */
+	const storedSemesterExists =
+		semesterId !== null && semesters.some((item) => item.id === semesterId);
+
+	// A semester deleted in settings would otherwise 404 on every visit, so the
+	// request waits for the list rather than guessing. The reset below then drops
+	// the dead id and the page follows the current semester again.
+	useEffect(() => {
+		if (isSemestersLoading || semesterId === null || storedSemesterExists) return;
+		setSemesterId(null);
+	}, [isSemestersLoading, semesterId, storedSemesterExists]);
+
+	const summarySemesterId =
+		semesterId !== null && !storedSemesterExists
+			? undefined
+			: activeSemesterId ?? undefined;
+	/** True while the stored semester is waiting to be validated by the list. */
+	const isWaitingForSemesters = summarySemesterId === undefined && semesterId !== null;
 
 	const { summary, isLoading, error, refetch } = useSemesterSummary(
-		activeSemesterId ?? undefined,
+		summarySemesterId,
 		endWeek ?? undefined,
 	);
 
@@ -356,7 +407,7 @@ export default function SemesterSummaryPage() {
 				}
 			/>
 
-			{isLoading && !summary ? (
+			{(isLoading && !summary) || isWaitingForSemesters ? (
 				<div className="flex items-center gap-2 text-sm text-muted-foreground">
 					<Loader2 className="h-4 w-4 animate-spin" />
 					正在汇总本学期数据...
@@ -515,7 +566,7 @@ export default function SemesterSummaryPage() {
 			)}
 
 			<p className="text-xs text-muted-foreground">
-				成员名单取自该学期自身的数据（日常考勤、组会出勤、周报、组会请假），正在进行的学期另加考勤组在册人员；某个学期里完全没有记录的成员不会出现在表中。缺少数据的那一项显示为「—」且不参与加权。改权重与筛选只影响本页展示，不会修改任何数据。
+				成员名单取自该学期自身的数据（日常考勤、组会出勤、周报、组会请假），正在进行的学期另加考勤组在册人员；某个学期里完全没有记录的成员不会出现在表中。组会出勤只对该学期留下过考勤或组会记录的同学判定，不参照今天的考勤组。缺少数据的那一项显示为「—」且不参与加权。改权重与筛选只影响本页展示，不会修改任何数据；这些设置会记住，下次打开仍是同一套。
 			</p>
 		</div>
 	);
