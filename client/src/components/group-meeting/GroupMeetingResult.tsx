@@ -1,7 +1,15 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import type { GroupMeetingPlan } from "@/lib/schema";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
+import type { GroupMeetingPlan, GroupMeetingSlot } from "@/lib/schema";
 import { WEEKDAY_NAMES } from "@/lib/schema";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -32,12 +40,63 @@ function sortByTime(slots: GroupMeetingPlan["params"]["slots"]) {
 	});
 }
 
+/** One meeting session: a weekday + period, and one numbered row per slot. */
+interface SessionBlock {
+	key: string;
+	day: string;
+	period: string;
+	/** Start of the session's first slot, the time the session reads as. */
+	start: string;
+	rows: { seq: number; members: string[] }[];
+}
+
+/**
+ * Lay the timetable out the way the printed schedule does: every slot gets a
+ * numbered row, so free slots still show up as blank lines. The solver books at
+ * most one group per 30-minute slot, but a slot holding several groups would
+ * simply become several consecutive rows.
+ */
+function buildSessions(
+	slots: GroupMeetingSlot[],
+	result: Record<string, string[][]>,
+): SessionBlock[] {
+	const blocks: SessionBlock[] = [];
+	const byKey = new Map<string, SessionBlock>();
+	let seq = 0;
+	for (const slot of slots) {
+		const key = `${slot.day}|${slot.period}`;
+		let block = byKey.get(key);
+		if (!block) {
+			block = { key, day: slot.day, period: slot.period, start: slot.start, rows: [] };
+			byKey.set(key, block);
+			blocks.push(block);
+		}
+		const groups = result[slot.name] ?? [];
+		const slotGroups: string[][] = groups.length > 0 ? groups : [[]];
+		for (const members of slotGroups) {
+			seq += 1;
+			block.rows.push({ seq, members });
+		}
+	}
+	return blocks;
+}
+
 export function GroupMeetingResult({ plan }: { plan: GroupMeetingPlan }) {
 	const slots = sortByTime(plan.params.slots ?? []);
 	const result = plan.result ?? {};
 	const missing = plan.validation?.missing ?? [];
 	const conflicts = plan.validation?.conflicts ?? [];
-	const scheduled = slots.filter((slot) => (result[slot.name] ?? []).length > 0);
+	const sessions = buildSessions(slots, result);
+	const hasAnyGroup = sessions.some((session) =>
+		session.rows.some((row) => row.members.length > 0),
+	);
+	// As wide as the largest group so every name lands in its own column.
+	const memberColumns = Math.max(
+		2,
+		...Object.values(result)
+			.flat()
+			.map((group) => group.length),
+	);
 
 	return (
 		<div className="space-y-4">
@@ -57,27 +116,54 @@ export function GroupMeetingResult({ plan }: { plan: GroupMeetingPlan }) {
 				</p>
 			) : null}
 
-			{scheduled.length === 0 ? (
+			{!hasAnyGroup ? (
 				<p className="text-sm text-muted-foreground">
 					{plan.status === "solving" || plan.status === "pending"
 						? "正在求解，请稍候..."
 						: "没有可展示的分组结果。"}
 				</p>
 			) : (
-				<div className="space-y-2">
-					{scheduled.map((slot) => (
-						<div key={slot.name} className="rounded-md border p-3">
-							<p className="mb-2 text-sm font-medium">{slot.name}</p>
-							<ul className="space-y-1 text-sm">
-								{(result[slot.name] ?? []).map((group, index) => (
-									<li key={index} className="text-muted-foreground">
-										第 {index + 1} 组：{group.join("、")}
-									</li>
-								))}
-							</ul>
-						</div>
-					))}
-				</div>
+				<Table>
+					<TableHeader>
+						<TableRow>
+							<TableHead className="w-28">时段</TableHead>
+							<TableHead className="w-14 text-center">序号</TableHead>
+							<TableHead colSpan={memberColumns} className="text-center">
+								小组成员
+							</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{sessions.map((session) =>
+							session.rows.map((row, rowIndex) => (
+								<TableRow key={`${session.key}-${row.seq}`}>
+									{rowIndex === 0 ? (
+										<TableCell
+											rowSpan={session.rows.length}
+											className="bg-muted/40 text-center align-middle"
+										>
+											<div className="text-sm font-medium">
+												{session.day}
+												<span className="font-semibold">{session.period}</span>
+											</div>
+											<div className="text-xs text-muted-foreground">
+												{session.start} 开始
+											</div>
+										</TableCell>
+									) : null}
+									<TableCell className="text-center text-muted-foreground tabular-nums">
+										{row.seq}
+									</TableCell>
+									{Array.from({ length: memberColumns }, (_, column) => (
+										<TableCell key={column} className="text-center">
+											{row.members[column] ?? ""}
+										</TableCell>
+									))}
+								</TableRow>
+							)),
+						)}
+					</TableBody>
+				</Table>
 			)}
 
 			{missing.length > 0 ? (
