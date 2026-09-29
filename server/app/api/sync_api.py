@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime
 from typing import List, Optional, Tuple
 from uuid import UUID
@@ -13,7 +12,6 @@ from app.auth.dependencies import get_required_user
 from app.database.crud.attendance_crud import attendance_group as attendance_group_crud
 from app.database.crud.member_crud import member as member_crud
 from app.database.crud.semester_crud import semester as semester_crud
-from app.database.crud.seminar_crud import seminar as seminar_crud
 from app.database.crud.sync_crud import (
     SyncRunCreate,
     sync_run as sync_run_crud,
@@ -21,6 +19,7 @@ from app.database.crud.sync_crud import (
 from app.database.database import get_db
 from app.helpers.feishu_jobs import feishu_jobs
 from app.helpers.semester_calendar import week_date, week_period
+from app.helpers.semester_stats import attendance_group_name, seminar_weekday
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -77,13 +76,11 @@ def _require_tokens(semester, app_token: Optional[str], table_id: Optional[str],
         )
 
 
-def _attendance_group_name() -> str:
-    return os.getenv("FEISHU_ATTENDANCE_GROUP_NAME", "SMC考勤")
-
-
 def _attendance_users(db: Session, semester_id: UUID) -> List[Tuple[str, str]]:
     """(feishu_user_id, name) pairs that attendance syncs should cover."""
-    rows = attendance_group_crud.list_members(db, group_name=_attendance_group_name())
+    rows = attendance_group_crud.list_members(
+        db, group_name=attendance_group_name()
+    )
     if rows:
         return [
             (str(row.feishu_user_id), str(row.name or ""))
@@ -96,18 +93,6 @@ def _attendance_users(db: Session, semester_id: UUID) -> List[Tuple[str, str]]:
         for member in fallback
         if member.feishu_user_id
     ]
-
-
-def _seminar_weekday(db: Session, semester, week: int) -> int:
-    slots = seminar_crud.get_multi_by(
-        db, semester_id=semester.id, week=week, limit=10
-    )
-    upcoming = [slot for slot in slots if not slot.happened]
-    if upcoming:
-        return int(upcoming[0].weekday)
-    if slots:
-        return int(slots[0].weekday)
-    return int(semester.default_seminar_weekday)
 
 
 def _timestamp_seconds(day, hhmm: str) -> int:
@@ -232,7 +217,7 @@ def start_sync(
             user_ids=[user_id for user_id, _ in attendance_users],
         )
     elif payload.task == "seminar_attendance":
-        weekday = _seminar_weekday(db, db_semester, payload.week)
+        weekday = seminar_weekday(db, db_semester, payload.week)
         seminar_date = week_date(db_semester.start_date, payload.week, weekday)
         check_from = _timestamp_seconds(
             seminar_date,

@@ -15,6 +15,7 @@ import type {
 	SeminarAttendanceSummary,
 	SeminarLeave,
 	Semester,
+	SemesterSummary,
 	SyncRun,
 	SyncTask,
 	TeacherPushPlan,
@@ -509,6 +510,20 @@ export function getSeminarLeaves(
 
 export function getSchedule(semesterId: string): Promise<{ entries: ScheduleEntry[] }> {
     return fetchFromApi(`/api/attendance/schedule?semester_id=${semesterId}`);
+}
+
+/* ------------------------------------------------------- semester summary */
+
+/** Term-wide metrics over weeks 1..`endWeek`; the omitted week is the server default. */
+export function getSemesterSummary(
+    semesterId?: string,
+    endWeek?: number,
+): Promise<SemesterSummary> {
+    const query = new URLSearchParams();
+    if (semesterId) query.set('semester_id', semesterId);
+    if (endWeek) query.set('end_week', String(endWeek));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return fetchFromApi(`/api/semester-summary${suffix}`);
 }
 
 /* ------------------------------------------------------------ group meeting */

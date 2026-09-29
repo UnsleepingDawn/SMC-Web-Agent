@@ -71,6 +71,31 @@ export function syncWeekOptions(semester: Semester, now: Date = new Date()): num
 }
 
 /**
+ * Render week numbers as a compact Chinese span, e.g. `[1,2,3,5]` becomes
+ * `第 1-3、5 周`. Consecutive weeks collapse into a range so a full-term
+ * coverage note stays one line.
+ */
+export function formatWeekSpan(weeks: number[]): string {
+	const sorted = [...new Set(weeks)].sort((a, b) => a - b);
+	if (sorted.length === 0) return "暂无";
+
+	const parts: string[] = [];
+	let start = sorted[0];
+	let previous = sorted[0];
+	for (const week of sorted.slice(1)) {
+		if (week === previous + 1) {
+			previous = week;
+			continue;
+		}
+		parts.push(start === previous ? String(start) : `${start}-${previous}`);
+		start = week;
+		previous = week;
+	}
+	parts.push(start === previous ? String(start) : `${start}-${previous}`);
+	return `第 ${parts.join("、")} 周`;
+}
+
+/**
  * Monday through Friday of the given week, mirroring the backend's `week_period`
  * (week 1 starts on the semester start date). Unlike `Semester.week_start` /
  * `week_end`, this works for any week, not just the current one.

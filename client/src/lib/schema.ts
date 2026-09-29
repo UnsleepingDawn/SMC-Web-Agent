@@ -395,3 +395,72 @@ export interface GroupMeetingDraft {
 	already_grouped: string[][];
 	meeting_periods: string[];
 }
+
+/* ------------------------------------------------------- semester summary */
+
+/** Term-wide clock-in tallies for one member. */
+export interface SemesterSummaryDaily {
+	present: number;
+	late: number;
+	absent: number;
+	/** Days excused because of a morning course. */
+	course: number;
+	/** Days with no clock-in obligation (无需打卡 / 无需打卡(请假)). */
+	excused: number;
+	/** Days without a final verdict yet (尚未打卡), typically the current day. */
+	pending: number;
+	/** present + late + absent; excused, course and pending days are excluded. */
+	expected: number;
+	/** null means there was nothing to attend, so the metric carries no signal. */
+	rate: number | null;
+}
+
+export interface SemesterSummarySeminar {
+	attended: number;
+	/** Weeks the member was due, excluding leave and course-conflict weeks. */
+	eligible: number;
+	leave: number;
+	course: number;
+	rate: number | null;
+}
+
+export interface SemesterSummaryWeeklyReport {
+	submitted: number;
+	/** Weeks 1..end_week, i.e. every week a report was due. */
+	expected: number;
+	rate: number | null;
+}
+
+/** The member master-data fields the summary page can filter on. */
+export interface SemesterSummaryMember {
+	grade: string | null;
+	advisor: string | null;
+	cultivation_type: string | null;
+	enrollment_status: string | null;
+	student_id: string | null;
+	need_attendance: boolean;
+	is_active: boolean;
+}
+
+export interface SemesterSummaryRow {
+	name: string;
+	/** null when the roster name has no row in the member master data. */
+	member: SemesterSummaryMember | null;
+	daily: SemesterSummaryDaily;
+	seminar: SemesterSummarySeminar;
+	weekly_report: SemesterSummaryWeeklyReport;
+}
+
+/** Weeks that actually hold rows, so the page can flag unsynced weeks. */
+export interface SemesterSummaryCoverage {
+	daily: number[];
+	seminar: number[];
+	weekly_report: number[];
+}
+
+export interface SemesterSummary {
+	semester: Semester;
+	end_week: number;
+	coverage: SemesterSummaryCoverage;
+	rows: SemesterSummaryRow[];
+}

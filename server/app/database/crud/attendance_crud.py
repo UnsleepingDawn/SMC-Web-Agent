@@ -54,6 +54,29 @@ class CRUDDailyAttendance(
             .all()
         )
 
+    def list_up_to_week(
+        self, db: Session, *, semester_id: UUID, end_week: int
+    ) -> List[DailyAttendanceRecord]:
+        """Every stored row from week 1 through ``end_week``, for term summaries.
+
+        Weeks that were never synced simply have no rows, so callers must not
+        read the row count as "days attended".
+        """
+        return (
+            db.query(DailyAttendanceRecord)
+            .filter(
+                DailyAttendanceRecord.semester_id == semester_id,
+                DailyAttendanceRecord.week >= 1,
+                DailyAttendanceRecord.week <= end_week,
+            )
+            .order_by(
+                DailyAttendanceRecord.member_name,
+                DailyAttendanceRecord.week,
+                DailyAttendanceRecord.attendance_date,
+            )
+            .all()
+        )
+
     def replace_week(
         self,
         db: Session,
@@ -105,6 +128,16 @@ class CRUDSeminarAttendance(
             .order_by(SeminarAttendanceRecord.member_name)
             .all()
         )
+
+    def names_by_semester(self, db: Session, *, semester_id: UUID) -> List[str]:
+        """Every member name with a row for the semester, attended or not."""
+        rows = (
+            db.query(SeminarAttendanceRecord.member_name)
+            .filter(SeminarAttendanceRecord.semester_id == semester_id)
+            .distinct()
+            .all()
+        )
+        return sorted({str(name) for (name,) in rows if name})
 
     def weeks_by_member(self, db: Session, *, semester_id: UUID) -> Dict[str, set]:
         """The weeks each member was observed, keyed by name.

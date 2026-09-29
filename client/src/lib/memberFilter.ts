@@ -141,3 +141,57 @@ export function deriveNeedAttendance(values: string[]): boolean | undefined {
 	if (wantsNeeded === wantsNotNeeded) return undefined;
 	return wantsNeeded;
 }
+
+/**
+ * The subset of `Member` the filter logic needs. Pages that already hold the
+ * member fields can pass the row through; pages that only have a name (such as
+ * the semester summary) pass the name plus whatever details are known.
+ */
+export interface FilterableMember {
+	name: string;
+	student_id?: string | null;
+	advisor?: string | null;
+	grade?: string | null;
+	cultivation_type?: string | null;
+	enrollment_status?: string | null;
+	need_attendance?: boolean | null;
+}
+
+/** An empty selection means "no constraint"; a value must match exactly. */
+function matchesValues(values: string[], value: string | null | undefined): boolean {
+	if (values.length === 0) return true;
+	return value != null && values.includes(value);
+}
+
+/**
+ * Apply the filter state to one member on the client.
+ *
+ * Mirrors the backend's `member_crud.list_filtered`: values inside one field
+ * match as OR, different fields still AND together, and the free-text search
+ * spans name / student id / advisor. Used where the roster is already in
+ * memory so filtering costs no request.
+ */
+export function matchesMemberFilters(
+	member: FilterableMember,
+	state: MemberFilterState,
+): boolean {
+	const search = state.search.trim().toLowerCase();
+	if (search) {
+		const haystack = [member.name, member.student_id, member.advisor]
+			.filter((value): value is string => Boolean(value))
+			.join(" ")
+			.toLowerCase();
+		if (!haystack.includes(search)) return false;
+	}
+
+	if (!matchesValues(state.advisor, member.advisor)) return false;
+	if (!matchesValues(state.grade, member.grade)) return false;
+	if (!matchesValues(state.cultivation_type, member.cultivation_type)) return false;
+	if (!matchesValues(state.enrollment_status, member.enrollment_status)) return false;
+
+	const needAttendance = deriveNeedAttendance(state.need_attendance);
+	if (needAttendance !== undefined && member.need_attendance !== needAttendance) {
+		return false;
+	}
+	return true;
+}

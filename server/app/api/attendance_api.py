@@ -7,7 +7,6 @@ and the parsing happen in the jobs worker, reachable through ``/api/sync``.
 from __future__ import annotations
 
 import logging
-import os
 from io import BytesIO
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -20,13 +19,21 @@ from app.database.crud.attendance_crud import (
     seminar_attendance as seminar_attendance_crud,
     seminar_leave as seminar_leave_crud,
 )
-from app.database.crud.member_crud import member as member_crud
 from app.database.crud.semester_crud import semester as semester_crud
-from app.database.crud.seminar_crud import seminar as seminar_crud
 from app.database.database import get_db
 from app.helpers.meeting_slots import safe_day_period
 from app.helpers.s3 import s3_service
 from app.helpers.semester_calendar import week_date
+from app.helpers.semester_stats import (
+    STATUS_ABSENT,
+    STATUS_LATE,
+    attendance_group_name,
+    build_seminar_eligibility,
+    daily_status,
+    expected_names,
+    morning_course_pairs,
+    seminar_weekday,
+)
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, status
 from openpyxl import Workbook
@@ -39,10 +46,6 @@ logger = logging.getLogger(__name__)
 attendance_router = APIRouter()
 
 
-def _attendance_group_name() -> str:
-    return os.getenv("FEISHU_ATTENDANCE_GROUP_NAME", "SMC考勤")
-
-
 def _resolve_semester(db: Session, semester_id: str):
     try:
         parsed_id = UUID(semester_id)
@@ -52,28 +55,6 @@ def _resolve_semester(db: Session, semester_id: str):
     if not db_semester:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="未找到学期")
     return db_semester
-
-
-def _seminar_weekday(db: Session, semester, week: int) -> int:
-    slots = seminar_crud.get_multi_by(db, semester_id=semester.id, week=week, limit=10)
-    upcoming = [slot for slot in slots if not slot.happened]
-    if upcoming:
-        return int(upcoming[0].weekday)
-    if slots:
-        return int(slots[0].weekday)
-    return int(semester.default_seminar_weekday)
-
-
-def _expected_names(db: Session, semester_id: UUID) -> List[str]:
-    """Who is expected at the seminar / in the weekly statistics."""
-    members = attendance_group_crud.list_members(
-        db, group_name=_attendance_group_name()
-    )
-    names = [str(row.name) for row in members if row.name]
-    if names:
-        return sorted(set(names))
-    rows = member_crud.list_filtered(db, need_attendance=True, is_active=True)
-    return sorted({str(row.name) for row in rows if row.name})
 
 
 def _clean_names(names: Optional[List[str]]) -> List[str]:
@@ -97,7 +78,7 @@ def get_attendance_group(
     current_user: CurrentUser = Depends(get_required_user),
     db: Session = Depends(get_db),
 ):
-    group_name = _attendance_group_name()
+    group_name = attendance_group_name()
     group = attendance_group_crud.get_by_name(db, name=group_name)
     members = attendance_group_crud.list_members(db, group_name=group_name)
     return {
@@ -122,21 +103,16 @@ def get_daily_attendance(
 def build_daily_summary(db: Session, semester, week: int) -> Dict[str, Any]:
     """Weekly clock-in table plus chart data, with course exemption applied."""
     records = daily_attendance_crud.list_by_week(db, semester_id=semester.id, week=week)
-    schedule = schedule_entry_crud.list_by_semester(db, semester_id=semester.id)
-    morning_courses = {
-        (int(entry.weekday), str(entry.member_name))
-        for entry in schedule
-        if entry.period == "上午"
-    }
+    morning_courses = morning_course_pairs(db, semester.id)
 
     by_member: Dict[str, Dict[str, str]] = {}
     for record in records:
-        status_text = str(record.status)
-        if status_text != "正常" and (
+        status_text = daily_status(
+            str(record.status),
             record.attendance_date.isoweekday(),
-            record.member_name,
-        ) in morning_courses:
-            status_text = "上课"
+            str(record.member_name),
+            morning_courses,
+        )
         by_member.setdefault(record.member_name, {})[
             record.attendance_date.isoformat()
         ] = status_text
@@ -145,8 +121,8 @@ def build_daily_summary(db: Session, semester, week: int) -> Dict[str, Any]:
     rows: List[Dict[str, Any]] = []
     for name in sorted(by_member):
         days = by_member[name]
-        absent_count = sum(1 for value in days.values() if value == "缺卡")
-        late_count = sum(1 for value in days.values() if value == "迟到")
+        absent_count = sum(1 for value in days.values() if value == STATUS_ABSENT)
+        late_count = sum(1 for value in days.values() if value == STATUS_LATE)
         rows.append(
             {
                 "member_name": name,
@@ -236,9 +212,9 @@ def get_seminar_attendance(
 
 def build_seminar_summary(db: Session, semester, week: int) -> Dict[str, Any]:
     """Expected/attended/absent lists with course and leave exemption applied."""
-    weekday = _seminar_weekday(db, semester, week)
+    weekday = seminar_weekday(db, semester, week)
     seminar_date = week_date(semester.start_date, week, weekday)
-    expected = _expected_names(db, semester.id)
+    expected = expected_names(db)
 
     records = seminar_attendance_crud.list_by_week(
         db, semester_id=semester.id, week=week
@@ -326,40 +302,11 @@ def get_seminar_missed(
 
 def build_seminar_missed(db: Session, semester, week: int) -> Dict[str, Any]:
     """Weeks each member owes since their last seminar attendance."""
-    period = safe_day_period(semester.default_seminar_start_time) or "晚上"
-
-    # Course exemption depends on the weekday of each occurrence, so the
-    # semester timetable is bucketed by weekday once and reused per week.
-    exempt_by_weekday: Dict[int, set] = {}
-    for entry in schedule_entry_crud.list_by_semester(db, semester_id=semester.id):
-        if entry.period == period and entry.member_name:
-            exempt_by_weekday.setdefault(int(entry.weekday), set()).add(
-                str(entry.member_name)
-            )
-
-    observed = seminar_attendance_crud.weeks_by_member(
-        db, semester_id=semester.id
-    )
-    leaves = seminar_leave_crud.weeks_by_member(db, semester_id=semester.id)
-
-    # The seminar weekday is per week, not per member, so resolve it once.
-    weekdays = {
-        candidate: _seminar_weekday(db, semester, candidate)
-        for candidate in range(1, week + 1)
-    }
+    eligibility = build_seminar_eligibility(db, semester, week)
 
     chart: List[Dict[str, Any]] = []
-    for name in _expected_names(db, semester.id):
-        leave_weeks = leaves.get(name, set())
-        attended = observed.get(name, set())
-        eligible: List[int] = []
-        for candidate in range(1, week + 1):
-            if candidate in leave_weeks:
-                continue
-            if name in exempt_by_weekday.get(weekdays[candidate], set()):
-                continue
-            eligible.append(candidate)
-
+    for name, eligible in eligibility.eligible.items():
+        attended = eligibility.observed.get(name, set())
         hit = [candidate for candidate in eligible if candidate in attended]
         if not hit:
             missed = len(eligible)
@@ -395,7 +342,7 @@ def set_seminar_manual(
 
     count = len(names)
     if payload.observed_names is not None:
-        weekday = _seminar_weekday(db, semester, payload.week)
+        weekday = seminar_weekday(db, semester, payload.week)
         seminar_date = week_date(semester.start_date, payload.week, weekday)
         count = seminar_attendance_crud.replace_override_rows(
             db,

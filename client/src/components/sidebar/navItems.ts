@@ -3,6 +3,7 @@ import {
     CalendarDays,
     ClipboardCheck,
     ClipboardList,
+    GraduationCap,
     LayoutDashboard,
     Send,
     Settings,
@@ -17,6 +18,7 @@ export type SidebarNavKey =
     | "attendance"
     | "group-meeting"
     | "weekly-reports"
+    | "semester-summary"
     | "notifications"
     | "settings";
 
@@ -70,6 +72,13 @@ export const navItems: SidebarNavItem[] = [
         title: "周报统计",
         url: "/weekly-reports",
         icon: ClipboardList,
+        requiresAuth: true,
+    },
+    {
+        key: "semester-summary",
+        title: "学期总结",
+        url: "/semester-summary",
+        icon: GraduationCap,
         requiresAuth: true,
     },    {
         key: "notifications",

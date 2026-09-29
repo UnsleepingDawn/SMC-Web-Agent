@@ -18,6 +18,7 @@ from app.api.group_meeting_api import group_meeting_router
 from app.api.member_api import member_router
 from app.api.notification_api import notification_router, settings_router
 from app.api.semester_api import semester_router
+from app.api.semester_summary_api import semester_summary_router
 from app.api.seminar_api import seminar_router
 from app.api.sync_api import sync_router
 from app.api.webhook_api import webhook_router
@@ -67,6 +68,7 @@ app.include_router(notification_router, prefix="/api/notifications")
 app.include_router(settings_router, prefix="/api/settings")
 app.include_router(sync_router, prefix="/api/sync")
 app.include_router(attendance_router, prefix="/api/attendance")
+app.include_router(semester_summary_router, prefix="/api/semester-summary")
 app.include_router(group_meeting_router, prefix="/api/group-meeting")
 app.include_router(webhook_router, prefix="/api/webhooks")
 
