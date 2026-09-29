@@ -70,10 +70,10 @@ interface Column {
 const COLUMNS: Column[] = [
 	{ label: "姓名", format: null, width: 168 },
 	{ label: "导师", format: null, width: 136 },
-	{ label: METRIC_LABELS.daily, format: "缺/迟/课", width: 220 },
-	{ label: METRIC_LABELS.seminar, format: "实到/应到", width: 228 },
-	{ label: METRIC_LABELS.weekly_report, format: "已交/未交", width: 216 },
-	{ label: "综合得分", format: null, width: 160 },
+	{ label: METRIC_LABELS.daily, format: "缺/迟/课/总", width: 250 },
+	{ label: METRIC_LABELS.seminar, format: "实到/应到", width: 214 },
+	{ label: METRIC_LABELS.weekly_report, format: "已交/应交", width: 210 },
+	{ label: "综合得分", format: null, width: 150 },
 ];
 
 /* ---------------------------------------------------------------- helpers */
@@ -89,7 +89,7 @@ function formatGeneratedAt(date: Date): string {
 
 /**
  * One metric cell: the rate, then its counts in the order the column's format
- * line spells out, e.g. `73% (6/0/58)`. The counts stay bare numbers because
+ * line spells out, e.g. `73% (6/0/58/22)`. The counts stay bare numbers because
  * the header above them already names each position.
  */
 function MetricCell({ text }: { text: MetricCompactText }) {
@@ -118,7 +118,7 @@ function MetricCell({ text }: { text: MetricCompactText }) {
  * rather than screenshotted. The detail table keeps the advisor, as the page's
  * table does, and drops the fields that do not matter for a semester overview
  * (grade and the status badge). Each metric cell is printed in the compact form
- * -- `73% (6/0/58)` -- with the column's format line naming the bracketed
+ * -- `73% (6/0/58/22)` -- with the column's format line naming the bracketed
  * counts, so a row stays readable at poster size instead of wrapping phrases.
  *
  * The overview figures are deliberately left out: they are already on the

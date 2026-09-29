@@ -91,13 +91,15 @@ export function dailyCellText(daily: SemesterSummaryRow["daily"]): MetricCellTex
 	};
 }
 
-/** Daily clock-ins, poster form: `73% (6/0/58)` for 缺卡/迟到/上课. */
+/** Daily clock-ins, poster form: `73% (6/0/58/22)` for 缺/迟/课/总. */
 export function dailyCompactText(
 	daily: SemesterSummaryRow["daily"],
 ): MetricCompactText {
 	return {
 		rate: daily.rate,
-		counts: [daily.absent, daily.late, daily.course],
+		// `expected` is what the rate divides by, so printing it lets a reader
+		// check the percentage: present is what is left of it after 缺 and 迟.
+		counts: [daily.absent, daily.late, daily.course, daily.expected],
 		aside: dailyAside(daily, { withCourse: false }),
 	};
 }
@@ -171,16 +173,15 @@ export function reportCellText(
 }
 
 /**
- * Weekly reports, poster form: `88% (15/2)` for 已交/未交. The outstanding
- * count is derived here rather than sent by the server, which reports only
- * what was submitted and how many weeks were due.
+ * Weekly reports, poster form: `88% (15/17)` for 已交/应交. The due count is the
+ * weeks the semester covers, which the page already spells out as `应提交`.
  */
 export function reportCompactText(
 	report: SemesterSummaryRow["weekly_report"],
 ): MetricCompactText {
 	return {
 		rate: report.rate,
-		counts: [report.submitted, Math.max(0, report.expected - report.submitted)],
+		counts: [report.submitted, report.expected],
 		aside: null,
 	};
 }
