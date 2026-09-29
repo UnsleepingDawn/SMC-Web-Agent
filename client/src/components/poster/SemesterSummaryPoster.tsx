@@ -6,10 +6,10 @@ import { PosterSection } from "@/components/poster/PosterBlocks";
 import { BOTTOM_RATIO, METRIC_LABELS, formatRate } from "@/lib/semesterScore";
 import type { RankedSemesterRow } from "@/lib/semesterScore";
 import {
-	type MetricCellText,
-	dailyCellText,
-	reportCellText,
-	seminarCellText,
+	type MetricCompactText,
+	dailyCompactText,
+	reportCompactText,
+	seminarCompactText,
 } from "@/lib/semesterSummaryText";
 import type { Semester } from "@/lib/schema";
 
@@ -51,16 +51,29 @@ export const SEMESTER_POSTER_WIDTH = CANVAS_WIDTH;
 const SCORE_AXIS = { max: 100, step: 25 };
 
 /**
+ * One column of the detail table. `format` names the counts inside a cell's
+ * brackets, position by position, so the cell itself can hold bare numbers. It
+ * is drawn as a second line under the column title, and must stay in step with
+ * the matching `*CompactText` function, which decides the order.
+ */
+interface Column {
+	label: string;
+	format: string | null;
+	width: number;
+}
+
+/**
  * The detail table's columns, in order. Widths add up to `CONTENT_WIDTH`, and
- * the cells are sized so one metric line fits without wrapping in the common
+ * the cells are sized so one compact line fits without wrapping in the common
  * case; a long line wraps rather than overflowing.
  */
-const COLUMNS = [
-	{ label: "姓名", width: 170 },
-	{ label: METRIC_LABELS.daily, width: 258 },
-	{ label: METRIC_LABELS.seminar, width: 268 },
-	{ label: METRIC_LABELS.weekly_report, width: 300 },
-	{ label: "综合得分", width: 132 },
+const COLUMNS: Column[] = [
+	{ label: "姓名", format: null, width: 168 },
+	{ label: "导师", format: null, width: 136 },
+	{ label: METRIC_LABELS.daily, format: "缺/迟/课", width: 220 },
+	{ label: METRIC_LABELS.seminar, format: "应到/实到", width: 228 },
+	{ label: METRIC_LABELS.weekly_report, format: "已交/未交", width: 216 },
+	{ label: "综合得分", format: null, width: 160 },
 ];
 
 /* ---------------------------------------------------------------- helpers */
@@ -74,19 +87,23 @@ function formatGeneratedAt(date: Date): string {
 	);
 }
 
-/** One metric cell: the wording on one line, the rate bracketed after it. */
-function MetricCell({ text }: { text: MetricCellText }) {
+/**
+ * One metric cell: the rate, then its counts in the order the column's format
+ * line spells out, e.g. `73% (6/0/58)`. The counts stay bare numbers because
+ * the header above them already names each position.
+ */
+function MetricCell({ text }: { text: MetricCompactText }) {
 	return (
 		<td className="px-[16px] py-[18px] align-top">
-			<span className="text-[22px]">{text.primary}</span>
-			{text.rate === null ? null : (
-				<span className="text-[22px] font-semibold tabular-nums">
-					（{formatRate(text.rate)}）
-				</span>
-			)}
-			{text.secondary ? (
+			<span className="text-[22px] font-semibold tabular-nums">
+				{formatRate(text.rate)}
+			</span>
+			<span className="ml-[8px] text-[22px] tabular-nums">
+				({text.counts.join("/")})
+			</span>
+			{text.aside ? (
 				<span className="mt-[4px] block text-[18px] text-muted-foreground">
-					{text.secondary}
+					{text.aside}
 				</span>
 			) : null}
 		</td>
@@ -98,8 +115,11 @@ function MetricCell({ text }: { text: MetricCellText }) {
 /**
  * The exported semester summary: who needs attention, followed by the detail
  * table. Meant to be read on a phone, so the page's two cards are re-laid out
- * rather than screenshotted, and the detail table drops the fields that do not
- * matter for a semester overview (advisor, grade and the status badge).
+ * rather than screenshotted. The detail table keeps the advisor, as the page's
+ * table does, and drops the fields that do not matter for a semester overview
+ * (grade and the status badge). Each metric cell is printed in the compact form
+ * -- `73% (6/0/58)` -- with the column's format line naming the bracketed
+ * counts, so a row stays readable at poster size instead of wrapping phrases.
  *
  * The overview figures are deliberately left out: they are already on the
  * page's overview card, and repeating them here only makes the poster longer.
@@ -196,9 +216,14 @@ export function SemesterSummaryPoster({
 									{COLUMNS.map((column) => (
 										<th
 											key={column.label}
-											className="px-[16px] py-[20px] text-left text-[26px] font-medium"
+											className="px-[16px] py-[20px] text-left align-top text-[26px] font-medium"
 										>
-											{column.label}
+											<span className="block">{column.label}</span>
+											{column.format ? (
+												<span className="mt-[6px] block text-[20px] font-normal text-muted-foreground">
+													{column.format}
+												</span>
+											) : null}
 										</th>
 									))}
 								</tr>
@@ -224,9 +249,12 @@ export function SemesterSummaryPoster({
 												</span>
 											) : null}
 										</td>
-										<MetricCell text={dailyCellText(item.row.daily)} />
-										<MetricCell text={seminarCellText(item.row.seminar)} />
-										<MetricCell text={reportCellText(item.row.weekly_report)} />
+										<td className="px-[16px] py-[18px] align-top text-[22px]">
+											{item.row.member?.advisor || "-"}
+										</td>
+										<MetricCell text={dailyCompactText(item.row.daily)} />
+										<MetricCell text={seminarCompactText(item.row.seminar)} />
+										<MetricCell text={reportCompactText(item.row.weekly_report)} />
 										<td className="px-[16px] py-[18px] align-top text-[30px] font-bold tabular-nums">
 											{formatRate(item.score)}
 										</td>
