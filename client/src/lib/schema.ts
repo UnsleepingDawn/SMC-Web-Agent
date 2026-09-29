@@ -34,6 +34,8 @@ export interface Semester {
 	id: string;
 	name: string;
 	start_date: string;
+	/** 学期结束日期；为空表示还没定。周次计算始终以 start_date 为准。 */
+	end_date: string | null;
 	default_seminar_weekday: number;
 	default_seminar_start_time: string;
 	default_seminar_end_time: string;

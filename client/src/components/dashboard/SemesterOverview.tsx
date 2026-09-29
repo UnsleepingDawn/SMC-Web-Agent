@@ -42,7 +42,10 @@ export function SemesterOverview({
 		<Card>
 			<CardHeader>
 				<CardTitle>当前学期</CardTitle>
-				<CardDescription>第 1 周从 {semester.start_date} 开始。</CardDescription>
+				<CardDescription>
+					第 1 周从 {semester.start_date} 开始
+					{semester.end_date ? `，学期结束于 ${semester.end_date}` : ""}。
+				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="flex flex-wrap items-center gap-2">

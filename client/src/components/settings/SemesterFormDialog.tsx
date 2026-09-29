@@ -28,6 +28,7 @@ import { toast } from "sonner";
 type SemesterFormState = {
 	name: string;
 	start_date: string;
+	end_date: string;
 	default_seminar_weekday: number;
 	default_seminar_start_time: string;
 	default_seminar_end_time: string;
@@ -50,6 +51,7 @@ type SemesterFormState = {
 const EMPTY_FORM: SemesterFormState = {
 	name: "",
 	start_date: "",
+	end_date: "",
 	default_seminar_weekday: 4,
 	default_seminar_start_time: "1900",
 	default_seminar_end_time: "2030",
@@ -76,11 +78,29 @@ const BITABLE_FIELDS = [
 	{ prefix: "schedule", label: "课表" },
 ] as const;
 
+/** 新建学期时结束日期的默认落点：第 19 周周日。 */
+const DEFAULT_SEMESTER_WEEKS = 19;
+
+/**
+ * 由开学日期（第 1 周周一）推出默认结束日期。
+ * 按本地时间加减天数，避免 new Date("YYYY-MM-DD") 被当成 UTC 而偏移一天。
+ */
+function defaultSemesterEndDate(startDate: string, weeks = DEFAULT_SEMESTER_WEEKS): string {
+	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(startDate.trim());
+	if (!match) return "";
+	const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+	date.setDate(date.getDate() + (weeks - 1) * 7 + 6);
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${date.getFullYear()}-${month}-${day}`;
+}
+
 function fromSemester(semester: Semester): SemesterFormState {
 	return {
 		...EMPTY_FORM,
 		name: semester.name,
 		start_date: semester.start_date,
+		end_date: semester.end_date ?? "",
 		default_seminar_weekday: semester.default_seminar_weekday,
 		default_seminar_start_time: semester.default_seminar_start_time,
 		default_seminar_end_time: semester.default_seminar_end_time,
@@ -111,12 +131,29 @@ interface SemesterFormDialogProps {
 export function SemesterFormDialog({ semester, open, onOpenChange, onSaved }: SemesterFormDialogProps) {
 	const [form, setForm] = useState<SemesterFormState>(EMPTY_FORM);
 	const [isSaving, setIsSaving] = useState(false);
+	// 用户手动改过结束日期后，就不再跟着开学日期自动覆盖。
+	const [endDateTouched, setEndDateTouched] = useState(false);
 
 	useEffect(() => {
 		setForm(semester ? fromSemester(semester) : EMPTY_FORM);
+		setEndDateTouched(false);
 	}, [semester, open]);
 
 	const patch = (partial: Partial<SemesterFormState>) => setForm((prev) => ({ ...prev, ...partial }));
+
+	// 新建学期时，填了开学日期就把结束日期默认到第 19 周周日。
+	const changeStartDate = (value: string) => {
+		if (!semester && !endDateTouched) {
+			patch({ start_date: value, end_date: value ? defaultSemesterEndDate(value) : "" });
+			return;
+		}
+		patch({ start_date: value });
+	};
+
+	const changeEndDate = (value: string) => {
+		setEndDateTouched(true);
+		patch({ end_date: value });
+	};
 
 	const save = async () => {
 		if (!form.name.trim()) {
@@ -125,6 +162,10 @@ export function SemesterFormDialog({ semester, open, onOpenChange, onSaved }: Se
 		}
 		if (!form.start_date) {
 			toast.error("请填写开学日期（第 1 周周一）。");
+			return;
+		}
+		if (form.end_date && form.end_date < form.start_date) {
+			toast.error("学期结束日期不能早于开学日期。");
 			return;
 		}
 		const startTime = parseTimeInput(form.default_seminar_start_time);
@@ -144,6 +185,7 @@ export function SemesterFormDialog({ semester, open, onOpenChange, onSaved }: Se
 		const payload = {
 			...form,
 			name: form.name.trim(),
+			end_date: form.end_date || null,
 			default_seminar_start_time: startTime,
 			default_seminar_end_time: endTime,
 			default_seminar_tencent_id: form.default_seminar_tencent_id || null,
@@ -193,7 +235,17 @@ export function SemesterFormDialog({ semester, open, onOpenChange, onSaved }: Se
 							id="semester-start"
 							type="date"
 							value={form.start_date}
-							onChange={(event) => patch({ start_date: event.target.value })}
+							onChange={(event) => changeStartDate(event.target.value)}
+							disabled={isSaving}
+						/>
+					</div>
+					<div className="space-y-2">
+						<Label htmlFor="semester-end">学期结束日期</Label>
+						<Input
+							id="semester-end"
+							type="date"
+							value={form.end_date}
+							onChange={(event) => changeEndDate(event.target.value)}
 							disabled={isSaving}
 						/>
 					</div>

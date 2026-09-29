@@ -95,6 +95,9 @@ class Semester(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, unique=True, nullable=False, index=True)
     start_date = Column(Date, nullable=False)
+    # Last day of the term; NULL means "not decided yet". Week arithmetic always
+    # derives from start_date, so this is only a human-facing boundary.
+    end_date = Column(Date, nullable=True)
     # ISO weekday of the default seminar slot: 1=Monday ... 7=Sunday.
     default_seminar_weekday = Column(Integer, nullable=False, default=4)
     default_seminar_start_time = Column(String, nullable=False, default="1900")

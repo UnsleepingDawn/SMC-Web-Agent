@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 class SemesterCreate(BaseModel):
     name: str
     start_date: date
+    end_date: Optional[date] = None
     default_seminar_weekday: int = 4
     default_seminar_start_time: str = "1900"
     default_seminar_end_time: str = "2030"
@@ -36,6 +37,7 @@ class SemesterCreate(BaseModel):
 class SemesterUpdate(BaseModel):
     name: Optional[str] = None
     start_date: Optional[date] = None
+    end_date: Optional[date] = None
     default_seminar_weekday: Optional[int] = None
     default_seminar_start_time: Optional[str] = None
     default_seminar_end_time: Optional[str] = None

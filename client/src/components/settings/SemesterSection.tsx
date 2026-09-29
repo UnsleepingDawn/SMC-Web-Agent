@@ -94,8 +94,9 @@ export function SemesterSection() {
 									) : null}
 								</div>
 								<p className="text-xs text-muted-foreground">
-								起始 {item.start_date} · 默认{" "}
-								{WEEKDAY_NAMES[item.default_seminar_weekday - 1] ?? ""}{" "}
+									起始 {item.start_date}
+									{item.end_date ? ` · 结束 ${item.end_date}` : ""} · 默认{" "}
+									{WEEKDAY_NAMES[item.default_seminar_weekday - 1] ?? ""}{" "}
 								{formatHhmm(item.default_seminar_start_time)}-
 								{formatHhmm(item.default_seminar_end_time)}
 								</p>
