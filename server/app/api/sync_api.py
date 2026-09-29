@@ -19,7 +19,12 @@ from app.database.crud.sync_crud import (
 from app.database.database import get_db
 from app.helpers.feishu_jobs import feishu_jobs
 from app.helpers.semester_calendar import week_date, week_period
-from app.helpers.semester_stats import attendance_group_name, seminar_weekday
+from app.helpers.semester_stats import (
+    attendance_group_name,
+    running_semester,
+    semester_data_names,
+    seminar_weekday,
+)
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -76,8 +81,8 @@ def _require_tokens(semester, app_token: Optional[str], table_id: Optional[str],
         )
 
 
-def _attendance_users(db: Session, semester_id: UUID) -> List[Tuple[str, str]]:
-    """(feishu_user_id, name) pairs that attendance syncs should cover."""
+def _group_users(db: Session) -> List[Tuple[str, str]]:
+    """The attendance group's members, with the ``need_attendance`` fallback."""
     rows = attendance_group_crud.list_members(
         db, group_name=attendance_group_name()
     )
@@ -93,6 +98,40 @@ def _attendance_users(db: Session, semester_id: UUID) -> List[Tuple[str, str]]:
         for member in fallback
         if member.feishu_user_id
     ]
+
+
+def _semester_users(db: Session, semester) -> List[Tuple[str, str]]:
+    """The members the finished semester's own rows prove were around.
+
+    Resolved against the master data so each name carries its ``feishu_user_id``;
+    a name without one cannot be queried at all and is left out.
+    """
+    names = semester_data_names(db, semester)
+    if not names:
+        return []
+    user_ids = {
+        str(member.name): str(member.feishu_user_id)
+        for member in member_crud.list_filtered(db)
+        if member.name and member.feishu_user_id
+    }
+    return sorted(
+        ((user_ids[name], name) for name in names if name in user_ids),
+        key=lambda pair: pair[1],
+    )
+
+
+def _attendance_users(db: Session, semester) -> List[Tuple[str, str]]:
+    """(feishu_user_id, name) pairs that attendance syncs should cover.
+
+    The attendance group says who is due *today*, so it is the roster for the
+    term in progress. A finished term must be read from its own rows instead:
+    the group has moved on since, and asking Feishu about today's members only
+    leaves everyone who left the group showing up as "no record" for a term
+    they actually attended.
+    """
+    if running_semester(db, semester):
+        return _group_users(db)
+    return _semester_users(db, semester)
 
 
 def _timestamp_seconds(day, hhmm: str) -> int:
@@ -160,11 +199,15 @@ def start_sync(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="请先选择学期"
             )
-        attendance_users = _attendance_users(db, db_semester.id)
+        attendance_users = _attendance_users(db, db_semester)
         if not attendance_users:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="还没有应到人员，请先同步考勤组或在人员管理里勾选需要考勤",
+                detail=(
+                    "还没有应到人员，请先同步考勤组或在人员管理里勾选需要考勤"
+                    if running_semester(db, db_semester)
+                    else "该学期没有任何数据可以确定应到名单，请先同步周报或组会记录"
+                ),
             )
 
     run = sync_run_crud.create(
