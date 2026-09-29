@@ -38,6 +38,38 @@ function formatLocalDate(date: Date): string {
 	return `${date.getFullYear()}-${month}-${day}`;
 }
 
+/** The same moment with the time of day dropped, so day diffs are whole. */
+function dayStart(date: Date): Date {
+	return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/**
+ * Which semester week a date falls in, mirroring the backend's `semester_week`
+ * (`semester_calendar.py`): the start date's own week is week 1, and every seven
+ * days after it adds one.
+ */
+export function semesterWeek(startDate: string, on: Date = new Date()): number {
+	const start = parseLocalDate(startDate);
+	if (!start) return 1;
+	const days = Math.round((dayStart(on).getTime() - start.getTime()) / 86_400_000);
+	return Math.max(1, Math.floor(days / 7) + 1);
+}
+
+/**
+ * Week numbers the sync panel's "全部周数" option stands for, newest first.
+ * A finished semester (its end date already behind us) stops at its end week;
+ * an ongoing one stops at the current week so future weeks are never pulled.
+ */
+export function syncWeekOptions(semester: Semester, now: Date = new Date()): number[] {
+	const end = semester.end_date ? parseLocalDate(semester.end_date) : null;
+	const currentWeek = semesterWeek(semester.start_date, now);
+	const last =
+		end && end.getTime() < dayStart(now).getTime()
+			? semesterWeek(semester.start_date, end)
+			: currentWeek;
+	return Array.from({ length: last }, (_, index) => last - index);
+}
+
 /**
  * Monday through Friday of the given week, mirroring the backend's `week_period`
  * (week 1 starts on the semester start date). Unlike `Semester.week_start` /

@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
 	Select,
@@ -14,7 +13,8 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { getSyncRun, startSync } from "@/lib/api";
+import { getSyncRun, getSyncRuns, startSync } from "@/lib/api";
+import { syncWeekOptions } from "@/lib/dashboardWeek";
 import { JobStatus, Semester, SyncRun, SyncTask } from "@/lib/schema";
 import { toast } from "sonner";
 
@@ -23,7 +23,7 @@ const TASK_LABELS: Record<SyncTask, string> = {
 	seminars: "组会安排",
 	weekly_reports: "周报记录",
 	attendance_group: "考勤组名单",
-	daily_attendance: "日常考勤（本周打卡）",
+	daily_attendance: "日常考勤（打卡）",
 	seminar_attendance: "组会考勤（打卡流水）",
 	seminar_leaves: "组会请假",
 	schedule: "课表",
@@ -35,13 +35,16 @@ const ALL_TASKS = Object.keys(TASK_LABELS) as SyncTask[];
 export const SYNC_ALL = "__all__";
 type TaskChoice = SyncTask | typeof SYNC_ALL;
 
-// Tasks that operate on a single week and therefore show the week input.
+// Tasks that operate on a single week and therefore show the week picker.
 const WEEK_TASKS: SyncTask[] = [
 	"weekly_reports",
 	"daily_attendance",
 	"seminar_attendance",
 	"seminar_leaves",
 ];
+
+/** Sentinel week option that fans a task out over every week of the semester. */
+export const WEEK_ALL = "__all_weeks__";
 
 interface SyncPanelProps {
 	semesters: Semester[];
@@ -68,7 +71,8 @@ export function SyncPanel({
 	const availableTasks = tasks ?? ALL_TASKS;
 	const [task, setTask] = useState<TaskChoice>(defaultTask ?? availableTasks[0] ?? "members");
 	const [semesterId, setSemesterId] = useState(defaultSemesterId ?? "");
-	const [week, setWeek] = useState(String(defaultWeek ?? 1));
+	// A week number as a string, or WEEK_ALL for "every week of the semester".
+	const [weekChoice, setWeekChoice] = useState(String(defaultWeek ?? 1));
 	const [runs, setRuns] = useState<SyncRun[]>([]);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const notifiedRef = useRef(false);
@@ -78,34 +82,70 @@ export function SyncPanel({
 	}, [defaultSemesterId, semesterId]);
 
 	useEffect(() => {
-		if (defaultWeek) setWeek(String(defaultWeek));
+		if (defaultWeek) setWeekChoice(String(defaultWeek));
 	}, [defaultWeek]);
 
-	// Only show the week input when the selection actually needs a week.
+	// Only show the week picker when the selection actually needs a week.
 	const bulkNeedsWeek = availableTasks.some((item) => WEEK_TASKS.includes(item));
 	const needsWeek =
 		task === SYNC_ALL ? bulkNeedsWeek : WEEK_TASKS.includes(task as SyncTask);
 
-	// Poll the batch while it is queued or executing.
+	// Week candidates come from the selected semester, not from the page's own
+	// week: a sync can cover a past semester the page is not showing.
+	const selectedSemester = useMemo(
+		() => semesters.find((item) => item.id === semesterId) ?? null,
+		[semesters, semesterId],
+	);
+	const weekOptions = useMemo(
+		() => (selectedSemester ? syncWeekOptions(selectedSemester) : []),
+		[selectedSemester],
+	);
+
+	// Switching semester (or a default week from a longer term) can leave the
+	// picked week outside the new range; fall back to the default or the newest
+	// week. An explicit "全部周数" is always valid and never overridden here.
+	useEffect(() => {
+		if (weekChoice === WEEK_ALL || weekOptions.length === 0) return;
+		const picked = Number(weekChoice);
+		if (weekOptions.includes(picked)) return;
+		setWeekChoice(
+			defaultWeek && weekOptions.includes(defaultWeek)
+				? String(defaultWeek)
+				: String(weekOptions[0]),
+		);
+	}, [weekChoice, weekOptions, defaultWeek]);
+
+	// Poll the batch while it is queued or executing. "全部周数" can spawn dozens
+	// of runs, so each tick asks for one recent-run list and only falls back to
+	// per-run requests for the ones that list did not cover.
 	useEffect(() => {
 		const pending = runs.filter(
 			(item) => item.status !== "completed" && item.status !== "failed",
 		);
 		if (pending.length === 0) return;
 		const timer = setInterval(async () => {
-			const refreshed = await Promise.all(
-				runs.map(async (item) => {
-					if (item.status === "completed" || item.status === "failed") return item;
-					try {
-						const response = await getSyncRun(item.id);
-						return response.run;
-					} catch (error) {
-						console.error("轮询同步状态失败", error);
-						return item;
-					}
-				}),
-			);
-			setRuns(refreshed);
+			try {
+				const response = await getSyncRuns(100);
+				const latest = new Map(response.runs.map((row) => [row.id, row]));
+				const missing = pending.filter((item) => !latest.has(item.id));
+				const fetched = await Promise.all(
+					missing.map(async (item) => {
+						try {
+							const single = await getSyncRun(item.id);
+							return single.run;
+						} catch (error) {
+							console.error("轮询同步状态失败", error);
+							return item;
+						}
+					}),
+				);
+				for (const row of fetched) latest.set(row.id, row);
+				setRuns((previous) =>
+					previous.map((item) => latest.get(item.id) ?? item),
+				);
+			} catch (error) {
+				console.error("轮询同步状态失败", error);
+			}
 		}, 2000);
 		return () => clearInterval(timer);
 	}, [runs]);
@@ -132,22 +172,42 @@ export function SyncPanel({
 			toast.error("请先选择学期。");
 			return;
 		}
-		const targets: SyncTask[] = task === SYNC_ALL ? availableTasks : [task];
+		if (needsWeek && weekChoice === WEEK_ALL && weekOptions.length === 0) {
+			toast.error("该学期还没有可同步的周次。");
+			return;
+		}
+		// Tasks that do not depend on a week are submitted once; week tasks are
+		// expanded into one submission per week when "全部周数" is picked.
+		const selected: TaskChoice[] = task === SYNC_ALL ? availableTasks : [task];
+		const targets: { task: SyncTask; week?: number }[] = [];
+		for (const item of selected) {
+			if (!WEEK_TASKS.includes(item as SyncTask)) {
+				targets.push({ task: item as SyncTask });
+				continue;
+			}
+			if (weekChoice === WEEK_ALL) {
+				for (const option of weekOptions) {
+					targets.push({ task: item as SyncTask, week: option });
+				}
+			} else {
+				targets.push({ task: item as SyncTask, week: Number(weekChoice) });
+			}
+		}
 		const created: SyncRun[] = [];
 		setIsSubmitting(true);
 		try {
 			for (const target of targets) {
 				const response = await startSync({
-					task: target,
+					task: target.task,
 					semester_id: semesterId,
-					week: WEEK_TASKS.includes(target) ? Number(week) : undefined,
+					week: target.week,
 				});
 				created.push({
 					id: response.run_id,
 					job_id: response.job_id,
-					task_name: target,
+					task_name: target.task,
 					semester_id: semesterId,
-					week: WEEK_TASKS.includes(target) ? Number(week) : null,
+					week: target.week ?? null,
 					status: "running",
 					error: null,
 					payload: {},
@@ -176,7 +236,7 @@ export function SyncPanel({
 		} finally {
 			setIsSubmitting(false);
 		}
-	}, [task, semesterId, week, availableTasks]);
+	}, [task, semesterId, weekChoice, weekOptions, needsWeek, availableTasks]);
 
 	const settledCount = runs.filter(
 		(item) => item.status === "completed" || item.status === "failed",
@@ -232,12 +292,23 @@ export function SyncPanel({
 					{needsWeek ? (
 						<div className="space-y-2">
 							<Label>周次</Label>
-							<Input
-								type="number"
-								min={1}
-								value={week}
-								onChange={(event) => setWeek(event.target.value)}
-							/>
+							<Select
+								value={weekChoice}
+								onValueChange={setWeekChoice}
+								disabled={weekOptions.length === 0}
+							>
+								<SelectTrigger className="w-full">
+									<SelectValue placeholder="选择周次" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value={WEEK_ALL}>全部周数</SelectItem>
+									{weekOptions.map((option) => (
+										<SelectItem key={option} value={String(option)}>
+											第 {option} 周
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 						</div>
 					) : null}
 				</div>
