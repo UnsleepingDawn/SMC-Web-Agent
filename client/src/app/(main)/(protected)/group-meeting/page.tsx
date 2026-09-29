@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle } from "@/components/ui/toggle";
 import { useCurrentSemester } from "@/hooks/useCurrentSemester";
 import { useGroupMeeting } from "@/hooks/useGroupMeeting";
 import { useGroupMeetingDraft } from "@/hooks/useGroupMeetingDraft";
@@ -46,6 +47,8 @@ export default function GroupMeetingPage() {
 	const [selectedPeriods, setSelectedPeriods] = useState<Set<string>>(new Set(["下午"]));
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [activePlanId, setActivePlanId] = useState<string | null>(null);
+	// Temporary scheduling: this session's edits are not written back as the draft.
+	const [isTemporarySchedule, setIsTemporarySchedule] = useState(false);
 	const appliedDraftFor = useRef<string | null>(null);
 
 	useEffect(() => {
@@ -122,14 +125,17 @@ export default function GroupMeetingPage() {
 			setActivePlanId(response.plan_id);
 			toast.success("已提交排班任务，正在求解。");
 			await refetch();
-			// Remember this selection so the next visit restores it.
-			saveDraft({
-				name_list: nameList,
-				already_grouped: alreadyGrouped,
-				meeting_periods: meetingPeriods,
-			}).catch((saveError) => {
-				console.error("保存排班选择失败", saveError);
-			});
+			// Remember this selection so the next visit restores it, unless the user
+			// explicitly asked for a temporary plan.
+			if (!isTemporarySchedule) {
+				saveDraft({
+					name_list: nameList,
+					already_grouped: alreadyGrouped,
+					meeting_periods: meetingPeriods,
+				}).catch((saveError) => {
+					console.error("保存排班选择失败", saveError);
+				});
+			}
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : "提交排班失败。");
 		} finally {
@@ -153,13 +159,30 @@ export default function GroupMeetingPage() {
 				description="参会名单仅含在读成员，可按导师全选；提交后按课表冲突求解分组与时段。"
 			/>
 
+			<div className="flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3">
+				<Toggle
+					variant="outline"
+					size="sm"
+					pressed={isTemporarySchedule}
+					onPressedChange={setIsTemporarySchedule}
+				>
+					临时排表
+				</Toggle>
+				<span className="text-xs text-muted-foreground">
+					开启后，本次对下方「参会名单」「预设分组与时段」的改动都不会保存，下次打开仍恢复上次记住的选择。
+				</span>
+			</div>
+
 			{error ? <p className="text-sm text-destructive">{error.message}</p> : null}
 
 			<div className="grid gap-6 lg:grid-cols-2">
 				<div className="space-y-4">
 					<Card>
 						<CardHeader>
-							<CardTitle>参会名单</CardTitle>
+							<div className="flex items-center gap-2">
+								<CardTitle>参会名单</CardTitle>
+								{isTemporarySchedule ? <Badge variant="secondary">临时</Badge> : null}
+							</div>
 							<CardDescription>仅列出在读成员，可按导师全选。</CardDescription>
 						</CardHeader>
 						<CardContent>
@@ -173,7 +196,10 @@ export default function GroupMeetingPage() {
 
 					<Card>
 						<CardHeader>
-							<CardTitle>预设分组与时段</CardTitle>
+							<div className="flex items-center gap-2">
+								<CardTitle>预设分组与时段</CardTitle>
+								{isTemporarySchedule ? <Badge variant="secondary">临时</Badge> : null}
+							</div>
 							<CardDescription>每行一组，组内姓名用顿号或逗号分隔；留空则由求解器分组。</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
