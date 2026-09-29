@@ -18,7 +18,7 @@ from app.database.crud.sync_crud import (
 )
 from app.database.database import get_db
 from app.helpers.feishu_jobs import feishu_jobs
-from app.helpers.semester_calendar import week_date, week_period
+from app.helpers.semester_calendar import shift_hhmm, week_date, week_period
 from app.helpers.semester_stats import (
     attendance_group_name,
     running_semester,
@@ -49,6 +49,14 @@ SUPPORTED_TASKS = (
 
 # Tasks that need a week number from the request.
 WEEK_TASKS = ("weekly_reports", "daily_attendance", "seminar_attendance", "seminar_leaves")
+
+# Grace margin on each side of the seminar when collecting clock-in flows.
+# The seminar window is the one the semester advertises (`19:00-20:30`), and
+# people drift in before it starts and linger after it ends; clamping the
+# query to those exact minutes drops them from the roster. The margin only
+# widens what counts as showing up -- it is never displayed, and it leaves the
+# announced time untouched.
+SEMINAR_FLOW_GRACE_MINUTES = 30
 
 
 class SyncRequest(BaseModel):
@@ -262,14 +270,14 @@ def start_sync(
     elif payload.task == "seminar_attendance":
         weekday = seminar_weekday(db, db_semester, payload.week)
         seminar_date = week_date(db_semester.start_date, payload.week, weekday)
-        check_from = _timestamp_seconds(
-            seminar_date,
-            db_semester.default_seminar_start_time,
+        window_from = shift_hhmm(
+            db_semester.default_seminar_start_time, -SEMINAR_FLOW_GRACE_MINUTES
         )
-        check_to = _timestamp_seconds(
-            seminar_date,
-            db_semester.default_seminar_end_time,
+        window_to = shift_hhmm(
+            db_semester.default_seminar_end_time, SEMINAR_FLOW_GRACE_MINUTES
         )
+        check_from = _timestamp_seconds(seminar_date, window_from)
+        check_to = _timestamp_seconds(seminar_date, window_to)
         job_id = feishu_jobs.sync_seminar_attendance(
             run_id=run.id,
             week=payload.week,
