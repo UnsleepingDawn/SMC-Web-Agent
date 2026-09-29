@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 from uuid import UUID
 
 from app.database.crud.base_crud import CRUDBase
@@ -77,6 +77,20 @@ class CRUDDailyAttendance(
             .all()
         )
 
+    def names_by_semester(self, db: Session, *, semester_id: UUID) -> List[str]:
+        """Every member name with a clock-in row for the semester.
+
+        The sync writes rows for the whole roster, so a member with no row at
+        all was not on the roster that term; this feeds the term roster.
+        """
+        rows = (
+            db.query(DailyAttendanceRecord.member_name)
+            .filter(DailyAttendanceRecord.semester_id == semester_id)
+            .distinct()
+            .all()
+        )
+        return sorted({str(name) for (name,) in rows if name})
+
     def replace_week(
         self,
         db: Session,
@@ -138,6 +152,20 @@ class CRUDSeminarAttendance(
             .all()
         )
         return sorted({str(name) for (name,) in rows if name})
+
+    def weeks_covered(self, db: Session, *, semester_id: UUID) -> Set[int]:
+        """Every week the semester holds a seminar row for.
+
+        The sync writes a row only where it recorded someone, so a week with no
+        row at all is a week the seminar never ran.
+        """
+        rows = (
+            db.query(SeminarAttendanceRecord.week)
+            .filter(SeminarAttendanceRecord.semester_id == semester_id)
+            .distinct()
+            .all()
+        )
+        return {int(week) for (week,) in rows}
 
     def weeks_by_member(self, db: Session, *, semester_id: UUID) -> Dict[str, set]:
         """The weeks each member was observed, keyed by name.
@@ -309,6 +337,20 @@ class SeminarLeaveCreate(BaseModel):
 
 
 class CRUDSeminarLeave(CRUDBase[SeminarLeave, SeminarLeaveCreate, BaseModel]):
+    def names_by_semester(self, db: Session, *, semester_id: UUID) -> List[str]:
+        """Every member name with a leave row for the semester.
+
+        Someone who asked for leave was plainly part of the semester even
+        without any attendance or report row, so this feeds the roster.
+        """
+        rows = (
+            db.query(SeminarLeave.member_name)
+            .filter(SeminarLeave.semester_id == semester_id)
+            .distinct()
+            .all()
+        )
+        return sorted({str(name) for (name,) in rows if name})
+
     def list_by_week(
         self, db: Session, *, semester_id: UUID, week: int
     ) -> List[SeminarLeave]:

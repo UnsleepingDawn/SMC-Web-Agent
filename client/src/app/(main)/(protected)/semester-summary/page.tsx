@@ -75,6 +75,100 @@ function SummaryStat({ label, value, hint }: { label: string; value: string; hin
 	);
 }
 
+/** A metric's rate, dimmed when the metric carries no data. */
+function Rate({ value }: { value: number | null }) {
+	return (
+		<span
+			className={cn(
+				"ml-1 font-medium text-foreground",
+				value === null && "text-muted-foreground",
+			)}
+		>
+			{formatRate(value)}
+		</span>
+	);
+}
+
+/**
+ * Daily clock-ins. A member with nothing but excused or pending days has no
+ * expected days at all, which the cell says outright instead of showing the
+ * bare "缺卡 0、迟到 0" that reads like a clean record.
+ */
+function DailyCell({ daily }: { daily: SemesterSummaryRow["daily"] }) {
+	if (daily.expected === 0) {
+		const aside = [
+			daily.course > 0 ? `上课 ${daily.course}` : null,
+			daily.excused > 0 ? `无需打卡 ${daily.excused}` : null,
+			daily.pending > 0 ? `尚未打卡 ${daily.pending}` : null,
+		].filter((part): part is string => part !== null);
+		return (
+			<span className="block">
+				无日常考勤记录
+				{aside.length > 0 ? (
+					<span className="block text-[10px] opacity-80">
+						仅有：{aside.join("、")}
+					</span>
+				) : null}
+			</span>
+		);
+	}
+	return (
+		<span className="block">
+			缺卡 {daily.absent}、迟到 {daily.late}
+			{daily.course > 0 ? `、上课 ${daily.course}` : ""}
+			<Rate value={daily.rate} />
+			{daily.excused > 0 || daily.pending > 0 ? (
+				<span className="block text-[10px] opacity-80">
+					不计入：无需打卡 {daily.excused}
+					{daily.pending > 0 ? `、尚未打卡 ${daily.pending}` : ""}
+				</span>
+			) : null}
+		</span>
+	);
+}
+
+/**
+ * Seminar weeks. With no eligible week at all the cell falls back to saying
+ * why: either the member has no seminar row whatsoever, meaning nobody ever
+ * asked them to attend, or every week was exempted by a course or a leave.
+ */
+function SeminarCell({ seminar }: { seminar: SemesterSummaryRow["seminar"] }) {
+	if (seminar.eligible === 0 && seminar.attended === 0) {
+		if (seminar.course === 0 && seminar.leave === 0) {
+			return <span className="block">无组会出勤记录</span>;
+		}
+		const aside = [
+			seminar.course > 0 ? `上课 ${seminar.course}` : null,
+			seminar.leave > 0 ? `请假 ${seminar.leave}` : null,
+		].filter((part): part is string => part !== null);
+		return (
+			<span className="block">
+				应到 0 周
+				<span className="block text-[10px] opacity-80">
+					全部豁免：{aside.join("、")}
+				</span>
+			</span>
+		);
+	}
+	return (
+		<span className="block">
+			实到 {seminar.attended} / 应到 {seminar.eligible}
+			{seminar.leave > 0 ? `、请假 ${seminar.leave}` : ""}
+			<Rate value={seminar.rate} />
+		</span>
+	);
+}
+
+/** Weekly-report submissions; every week 1..end_week is due a report. */
+function ReportCell({ report }: { report: SemesterSummaryRow["weekly_report"] }) {
+	return (
+		<span className="block">
+			提交 {report.submitted} / 应提交 {report.expected}
+			<Rate value={report.rate} />
+		</span>
+	);
+}
+
 export default function SemesterSummaryPage() {
 	const { semester: currentSemester, isLoading: isSemesterLoading } = useCurrentSemester();
 	const { semesters } = useSemesters();
@@ -376,7 +470,7 @@ export default function SemesterSummaryPage() {
 														{row.name}
 														{item.rank ? (
 															<span className="ml-2 text-xs text-muted-foreground tabular-nums">
-																第 {item.rank} 名
+																倒数第 {item.rank} 名
 															</span>
 														) : null}
 													</TableCell>
@@ -386,53 +480,16 @@ export default function SemesterSummaryPage() {
 														className="text-xs text-muted-foreground"
 														title="出勤率只按正常、迟到、缺卡三类计算；课程豁免、无需打卡与尚未打卡不计入应到天数。"
 													>
-														<span className="block">
-															缺卡 {row.daily.absent}、迟到 {row.daily.late}
-															{row.daily.course > 0 ? `、上课 ${row.daily.course}` : ""}
-															<span
-																className={cn(
-																	"ml-1 font-medium text-foreground",
-																	row.daily.rate === null &&
-																		"text-muted-foreground",
-																)}
-															>
-																{formatRate(row.daily.rate)}
-															</span>
-														</span>
-														{row.daily.excused > 0 || row.daily.pending > 0 ? (
-															<span className="block text-[10px] opacity-80">
-																不计入：无需打卡 {row.daily.excused}
-																{row.daily.pending > 0
-																	? `、尚未打卡 ${row.daily.pending}`
-																	: ""}
-															</span>
-														) : null}
+														<DailyCell daily={row.daily} />
+													</TableCell>
+													<TableCell
+														className="text-xs text-muted-foreground"
+														title="应到周数不含请假周与当周组会时段有课的周。"
+													>
+														<SeminarCell seminar={row.seminar} />
 													</TableCell>
 													<TableCell className="text-xs text-muted-foreground">
-														实到 {row.seminar.attended} / 应到 {row.seminar.eligible}
-														{row.seminar.leave > 0 ? `、请假 ${row.seminar.leave}` : ""}
-														<span
-															className={cn(
-																"ml-1 font-medium text-foreground",
-																row.seminar.rate === null &&
-																	"text-muted-foreground",
-															)}
-														>
-															{formatRate(row.seminar.rate)}
-														</span>
-													</TableCell>
-													<TableCell className="text-xs text-muted-foreground">
-														提交 {row.weekly_report.submitted} / 应提交{" "}
-														{row.weekly_report.expected}
-														<span
-															className={cn(
-																"ml-1 font-medium text-foreground",
-																row.weekly_report.rate === null &&
-																	"text-muted-foreground",
-															)}
-														>
-															{formatRate(row.weekly_report.rate)}
-														</span>
+														<ReportCell report={row.weekly_report} />
 													</TableCell>
 													<TableCell className="tabular-nums">
 														{formatRate(item.score)}
@@ -458,7 +515,7 @@ export default function SemesterSummaryPage() {
 			)}
 
 			<p className="text-xs text-muted-foreground">
-				统计范围与考勤组一致；没有考勤或组会记录的成员仍会列出，但缺少数据的那一项不参与加权。改权重与筛选只影响本页展示，不会修改任何数据。
+				成员名单取自该学期自身的数据（日常考勤、组会出勤、周报、组会请假），正在进行的学期另加考勤组在册人员；某个学期里完全没有记录的成员不会出现在表中。缺少数据的那一项显示为「—」且不参与加权。改权重与筛选只影响本页展示，不会修改任何数据。
 			</p>
 		</div>
 	);

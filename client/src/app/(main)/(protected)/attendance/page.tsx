@@ -362,13 +362,16 @@ function AttendancePageContent() {
 							<CardTitle>第 {activeWeek} 周组会出勤</CardTitle>
 							<CardDescription>
 								{seminar
-									? `${seminar.seminar_date} ${WEEKDAY_NAMES[seminar.weekday - 1]}${seminar.period}，应到 ${seminar.expected.length} 人`
+									? seminar.has_seminar
+										? `${seminar.seminar_date} ${WEEKDAY_NAMES[seminar.weekday - 1]}${seminar.period}，应到 ${seminar.expected.length} 人`
+										: "该周没有组会"
 									: "暂无数据"}
 							</CardDescription>
 						</CardHeader>
 						<CardContent className="space-y-4">
 							{seminar ? (
-								<div className="space-y-3 text-sm">
+								seminar.has_seminar ? (
+									<div className="space-y-3 text-sm">
 									<div>
 										<span className="font-medium">已出勤（{displayedAttended.length}）：</span>
 										{displayedAttended.join("、") || "无"}
@@ -410,7 +413,12 @@ function AttendancePageContent() {
 											</Toggle>
 										) : null}
 									</div>
-								</div>
+									</div>
+								) : (
+									<p className="text-sm text-muted-foreground">
+										该周没有组会安排，也没有任何打卡流水记录，因此不计缺勤。切换周次后可查看有组会的周。
+									</p>
+								)
 							) : (
 								<EmptyState title="暂无组会考勤" description="同步组会考勤后可在此查看出勤情况。" />
 							)}

@@ -15,12 +15,15 @@ from typing import Dict, Iterable, List, Set, Tuple
 
 from app.database.crud.attendance_crud import (
     attendance_group as attendance_group_crud,
+    daily_attendance as daily_attendance_crud,
     schedule_entry as schedule_entry_crud,
     seminar_attendance as seminar_attendance_crud,
     seminar_leave as seminar_leave_crud,
 )
 from app.database.crud.member_crud import member as member_crud
 from app.database.crud.seminar_crud import seminar as seminar_crud
+from app.database.crud.semester_crud import semester as semester_crud
+from app.database.crud.weekly_report_crud import weekly_report as weekly_report_crud
 from app.database.models import Semester
 from app.helpers.meeting_slots import safe_day_period
 from app.helpers.semester_calendar import semester_week
@@ -76,6 +79,98 @@ def expected_names(db: Session) -> List[str]:
         return sorted(set(names))
     rows = member_crud.list_filtered(db, need_attendance=True, is_active=True)
     return sorted({str(row.name) for row in rows if row.name})
+
+
+def running_semester(db: Session, semester: Semester) -> bool:
+    """Whether the semester is the one currently in progress.
+
+    The attendance group has no semester of its own, so it only describes who
+    is due *today*. For a finished semester the group says nothing about who
+    was around back then, and membership has to be read from that term's own
+    rows instead.
+    """
+    current = semester_crud.get_current(db)
+    return bool(current) and str(current.id) == str(semester.id)
+
+
+def semester_data_names(
+    db: Session,
+    semester: Semester,
+    *,
+    daily_names: Iterable[str] | None = None,
+    report_names: Iterable[str] | None = None,
+) -> Set[str]:
+    """Names with any stored row of their own in the semester.
+
+    Callers that already loaded the daily rows or the report weeks pass the
+    names in instead of making this read them again.
+    """
+    names = set(
+        daily_names
+        if daily_names is not None
+        else daily_attendance_crud.names_by_semester(db, semester_id=semester.id)
+    )
+    names |= set(
+        report_names
+        if report_names is not None
+        else weekly_report_crud.weeks_by_member(db, semester_id=semester.id)
+    )
+    names |= set(
+        seminar_attendance_crud.names_by_semester(db, semester_id=semester.id)
+    )
+    names |= set(seminar_leave_crud.names_by_semester(db, semester_id=semester.id))
+    return names
+
+
+def roster_with_group(
+    db: Session, semester: Semester, names: Iterable[str]
+) -> Set[str]:
+    """Add the current attendance group while the semester is still running.
+
+    The group describes who is due *today*, so it is only valid for the term in
+    progress and keeps a freshly created semester showing its roster before the
+    first sync. A finished semester must never widen it this way: doing so
+    invents weeks due for everyone who joined later.
+    """
+    roster = set(names)
+    if running_semester(db, semester):
+        roster |= set(expected_names(db))
+    return roster
+
+
+def semester_roster(
+    db: Session,
+    semester: Semester,
+    *,
+    daily_names: Iterable[str] | None = None,
+    report_names: Iterable[str] | None = None,
+) -> Set[str]:
+    """Everyone the semester's rows prove was around, plus the running group."""
+    return roster_with_group(
+        db,
+        semester,
+        semester_data_names(
+            db, semester, daily_names=daily_names, report_names=report_names
+        ),
+    )
+
+
+def seminar_roster(
+    db: Session, semester: Semester, *, daily_names: Iterable[str] | None = None
+) -> Set[str]:
+    """The members whose seminar weeks are on record for the semester.
+
+    Seminars are owed by whoever is on the attendance roster, and the proof of
+    that is a clock-in row for the term, a group seat while the term runs, or a
+    seminar row / leave request. A member with nothing but weekly reports was
+    never asked to attend, so judging them on "missed every week" would be a
+    verdict on seminars that were never theirs to attend.
+    """
+    return roster_with_group(
+        db,
+        semester,
+        semester_data_names(db, semester, daily_names=daily_names, report_names=()),
+    )
 
 
 def seminar_weekday(db: Session, semester: Semester, week: int) -> int:
@@ -170,23 +265,47 @@ class SeminarEligibility:
     approved leave. ``observed`` holds the weeks the member actually attended,
     read from the effective roster (manual override wins over the clock-in
     flow).
+
+    ``on_record`` lists the names that have at least one stored seminar row,
+    attendance or leave. The sync only writes rows for members it was told to
+    cover, so a name outside this set carries no evidence that they owed any
+    seminar: their rate must read as "no data" rather than as a zero.
     """
 
     eligible: Dict[str, List[int]] = field(default_factory=dict)
     exempt: Dict[str, List[int]] = field(default_factory=dict)
     leave: Dict[str, List[int]] = field(default_factory=dict)
     observed: Dict[str, Set[int]] = field(default_factory=dict)
+    on_record: Set[str] = field(default_factory=set)
+
+
+def seminar_weeks_held(
+    db: Session, semester: Semester, end_week: int
+) -> Set[int]:
+    """The weeks inside 1..``end_week`` that the seminar actually took place.
+
+    A week only counts when something proves the seminar ran: a planned slot
+    marked as held, or at least one recorded attendance. Weeks without either
+    are holidays, or the opening weeks of a term before the seminar started,
+    and charging them to the roster would report everyone as having skipped a
+    seminar that never happened.
+    """
+    slots = seminar_crud.list_by_semester(db, semester_id=semester.id)
+    held = {int(slot.week) for slot in slots if slot.happened}
+    held |= seminar_attendance_crud.weeks_covered(db, semester_id=semester.id)
+    return {week for week in held if 1 <= week <= end_week}
 
 
 def build_seminar_eligibility(
     db: Session, semester: Semester, end_week: int, names: Iterable[str] | None = None
 ) -> SeminarEligibility:
-    """Classify weeks 1..``end_week`` for every member due at the seminar.
+    """Classify the seminar weeks of 1..``end_week`` for every member due there.
 
     Weeks where the member was on leave or had a course at the seminar period
     are left out of ``eligible`` entirely: they neither count as attendance
-    nor as an absence. ``names`` overrides the roster when the caller has
-    already widened it.
+    nor as an absence. So are weeks the seminar never ran in, which owe nobody
+    anything. ``names`` overrides the roster when the caller has already
+    widened it.
     """
     period = safe_day_period(semester.default_seminar_start_time) or "晚上"
 
@@ -201,19 +320,18 @@ def build_seminar_eligibility(
 
     leaves = seminar_leave_crud.weeks_by_member(db, semester_id=semester.id)
     observed = seminar_attendance_crud.weeks_by_member(db, semester_id=semester.id)
-    # The seminar weekday is per week, not per member, so resolve it once.
-    weekdays = {
-        week: seminar_weekday(db, semester, week)
-        for week in range(1, end_week + 1)
-    }
+    # The seminar weekday is per week, not per member, so resolve it once, and
+    # only for the weeks that are actually part of the frame.
+    weeks = sorted(seminar_weeks_held(db, semester, end_week))
+    weekdays = {week: seminar_weekday(db, semester, week) for week in weeks}
 
-    result = SeminarEligibility()
+    result = SeminarEligibility(on_record=set(observed) | set(leaves))
     for name in names if names is not None else expected_names(db):
         leave_weeks = leaves.get(name, set())
         eligible: List[int] = []
         exempt: List[int] = []
         on_leave: List[int] = []
-        for week in range(1, end_week + 1):
+        for week in weeks:
             if week in leave_weeks:
                 on_leave.append(week)
                 continue

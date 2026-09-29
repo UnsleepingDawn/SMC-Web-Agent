@@ -32,7 +32,9 @@ from app.helpers.semester_stats import (
     daily_status,
     expected_names,
     morning_course_pairs,
+    seminar_roster,
     seminar_weekday,
+    seminar_weeks_held,
 )
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -211,10 +213,15 @@ def get_seminar_attendance(
 
 
 def build_seminar_summary(db: Session, semester, week: int) -> Dict[str, Any]:
-    """Expected/attended/absent lists with course and leave exemption applied."""
+    """Expected/attended/absent lists with course and leave exemption applied.
+
+    A week the seminar never ran in reports nothing due: listing the whole
+    roster as absent would charge everyone for a meeting that never happened.
+    """
     weekday = seminar_weekday(db, semester, week)
     seminar_date = week_date(semester.start_date, week, weekday)
-    expected = expected_names(db)
+    has_seminar = week in seminar_weeks_held(db, semester, end_week=week)
+    expected = expected_names(db) if has_seminar else []
 
     records = seminar_attendance_crud.list_by_week(
         db, semester_id=semester.id, week=week
@@ -269,6 +276,7 @@ def build_seminar_summary(db: Session, semester, week: int) -> Dict[str, Any]:
         "weekday": weekday,
         "seminar_date": seminar_date.isoformat(),
         "period": period,
+        "has_seminar": has_seminar,
         "expected": expected,
         "attended": attended,
         "absent": absent_from(set(attended)),
@@ -302,7 +310,9 @@ def get_seminar_missed(
 
 def build_seminar_missed(db: Session, semester, week: int) -> Dict[str, Any]:
     """Weeks each member owes since their last seminar attendance."""
-    eligibility = build_seminar_eligibility(db, semester, week)
+    eligibility = build_seminar_eligibility(
+        db, semester, week, names=sorted(seminar_roster(db, semester))
+    )
 
     chart: List[Dict[str, Any]] = []
     for name, eligible in eligibility.eligible.items():

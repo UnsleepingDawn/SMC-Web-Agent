@@ -314,6 +314,8 @@ export interface SeminarAttendanceSummary {
 	weekday: number;
 	seminar_date: string;
 	period: string;
+	/** False when the seminar never ran that week, so nothing is due. */
+	has_seminar: boolean;
 	expected: string[];
 	/** Effective roster: the override list when one exists, else the clock-in list. */
 	attended: string[];

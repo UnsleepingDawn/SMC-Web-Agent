@@ -6,9 +6,10 @@ member over weeks 1..``end_week``. It deliberately stops there: weighting,
 ranking and the bottom-20% cut happen on the client, so dragging the weight
 sliders never hits the network.
 
-The roster is the attendance group, matching the attendance page and the
-weekly-report statistics. Members whose details are missing from the master
-data still appear, just without a grade/advisor to filter on.
+The roster is read from the semester's own rows rather than from today's
+attendance group, so a finished term is not widened by whoever joined later.
+Members whose details are missing from the master data still appear, just
+without a grade/advisor to filter on.
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ from uuid import UUID
 from app.auth.dependencies import get_required_user
 from app.database.crud.attendance_crud import (
     daily_attendance as daily_attendance_crud,
-    seminar_attendance as seminar_attendance_crud,
 )
 from app.database.crud.member_crud import member as member_crud
 from app.database.crud.semester_crud import semester as semester_crud
@@ -38,9 +38,10 @@ from app.helpers.semester_stats import (
     daily_bucket,
     default_end_week,
     distinct_weeks,
-    expected_names,
     morning_course_pairs,
     ratio_rate,
+    semester_roster,
+    seminar_roster,
 )
 from app.schemas.user import CurrentUser
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -109,7 +110,9 @@ def _daily_metrics(
         buckets.setdefault(name, dict(empty))[bucket] += 1
 
     for tally in buckets.values():
-        tally["expected"] = tally[DAILY_PRESENT] + tally[DAILY_LATE] + tally[DAILY_ABSENT]
+        tally["expected"] = (
+            tally[DAILY_PRESENT] + tally[DAILY_LATE] + tally[DAILY_ABSENT]
+        )
         tally["rate"] = attendance_rate(
             tally[DAILY_PRESENT], tally[DAILY_LATE], tally[DAILY_ABSENT]
         )
@@ -143,20 +146,26 @@ def semester_summary(
     daily_by_name, coverage = _daily_metrics(db, db_semester, resolved_end_week)
     reports = weekly_report_crud.weeks_by_member(db, semester_id=db_semester.id)
 
-    # The attendance group is the baseline roster, but its sync can lag: members
-    # who clocked in or submitted a report before joining the group would
-    # otherwise be dropped from the term statistics entirely. Anyone with a
-    # stored row for the semester is therefore summarised too.
-    names = set(expected_names(db))
-    names |= set(daily_by_name)
-    names |= set(reports)
-    names |= set(
-        seminar_attendance_crud.names_by_semester(db, semester_id=db_semester.id)
+    # Membership comes from the semester's own rows, so a member who clocked in
+    # or submitted a report before leaving the group still keeps their term
+    # statistics. For the term in progress the group is unioned in, which also
+    # gives a freshly created semester its roster before the first sync.
+    names = semester_roster(
+        db,
+        db_semester,
+        daily_names=daily_by_name,
+        report_names=reports,
     )
 
     eligibility = build_seminar_eligibility(
         db, db_semester, resolved_end_week, names=sorted(names)
     )
+
+    # Seminars are owed by whoever is on the attendance roster, so a member is
+    # judged on them once there is proof they were on it that semester. Members
+    # with nothing but weekly reports stay out: reporting "matched 0 of 17"
+    # against them would be a verdict on seminars they were never due at.
+    seminar_names = seminar_roster(db, db_semester, daily_names=daily_by_name)
 
     members = {member.name: member for member in member_crud.list_filtered(db)}
 
@@ -165,16 +174,25 @@ def semester_summary(
         tally = daily_by_name.get(name)
         daily = dict(tally) if tally else _empty_daily_tally()
 
-        eligible = eligibility.eligible.get(name, [])
-        observed = eligibility.observed.get(name, set())
-        attended = sum(1 for week in eligible if week in observed)
-        seminar = {
-            "attended": attended,
-            "eligible": len(eligible),
-            "leave": len(eligibility.leave.get(name, [])),
-            "course": len(eligibility.exempt.get(name, [])),
-            "rate": ratio_rate(attended, len(eligible)),
-        }
+        if name in seminar_names:
+            eligible = eligibility.eligible.get(name, [])
+            observed = eligibility.observed.get(name, set())
+            attended = sum(1 for week in eligible if week in observed)
+            seminar = {
+                "attended": attended,
+                "eligible": len(eligible),
+                "leave": len(eligibility.leave.get(name, [])),
+                "course": len(eligibility.exempt.get(name, [])),
+                "rate": ratio_rate(attended, len(eligible)),
+            }
+        else:
+            seminar = {
+                "attended": 0,
+                "eligible": 0,
+                "leave": 0,
+                "course": 0,
+                "rate": None,
+            }
 
         submitted_weeks = distinct_weeks(
             reports.get(name, set()), resolved_end_week
