@@ -37,6 +37,21 @@ interface PosterBarChartProps {
 	 */
 	plotWidth: number;
 	plotHeight?: number;
+	/**
+	 * How the names under the plot are set. `horizontal` keeps one line per name
+	 * and truncates whatever does not fit the column; `vertical` stacks the
+	 * characters top-to-bottom, which is how Chinese names are set in print and
+	 * keeps long names whole when a chart has many columns.
+	 */
+	labelOrientation?: "horizontal" | "vertical";
+	/**
+	 * Pin the value axis instead of deriving it from the data, e.g.
+	 * `{ max: 100, step: 25 }` for a chart whose values are percentages. Without
+	 * it a 35% value fills the plot and reads as a near-perfect score.
+	 */
+	axis?: { max: number; step: number };
+	/** Appended to the axis ticks and the value labels, e.g. `%`. */
+	valueSuffix?: string;
 }
 
 /** Axis label column width in px. */
@@ -70,6 +85,9 @@ export function PosterBarChart({
 	emptyText,
 	plotWidth,
 	plotHeight = DEFAULT_PLOT_HEIGHT,
+	labelOrientation = "horizontal",
+	axis,
+	valueSuffix = "",
 }: PosterBarChartProps) {
 	if (data.length === 0) {
 		return <p className="text-[28px] text-muted-foreground">{emptyText}</p>;
@@ -77,8 +95,13 @@ export function PosterBarChart({
 
 	const visible = data.slice(0, maxColumns);
 	const hiddenCount = data.length - visible.length;
-	const maxValue = Math.max(1, ...visible.flatMap((row) => row.values));
-	const { max, ticks } = buildTicks(maxValue);
+	const derived = buildTicks(Math.max(1, ...visible.flatMap((row) => row.values)));
+	// A pinned axis wins over the derived one, so the same axis can be shared by
+	// charts that must stay comparable (the poster and the page's score chart).
+	const max = axis?.max ?? derived.max;
+	const ticks = axis
+		? Array.from({ length: Math.floor(axis.max / axis.step) + 1 }, (_, i) => i * axis.step)
+		: derived.ticks;
 
 	// Subtract the gaps first, then cap, so the group never overflows `plotWidth`.
 	const columnWidth = Math.min(
@@ -111,6 +134,7 @@ export function PosterBarChart({
 							style={{ bottom: `${(tick / max) * 100}%` }}
 						>
 							{tick}
+							{valueSuffix}
 						</span>
 					))}
 				</div>
@@ -158,6 +182,7 @@ export function PosterBarChart({
 													style={{ bottom: `calc(${height} + 6px)` }}
 												>
 													{value}
+													{valueSuffix}
 												</span>
 											</div>
 										);
@@ -166,12 +191,30 @@ export function PosterBarChart({
 							))}
 						</div>
 					</div>
-					<div className="mt-[10px] flex" style={{ gap: COLUMN_GAP }}>
+					<div className="mt-[10px] flex items-start" style={{ gap: COLUMN_GAP }}>
 						{visible.map((row) => (
 							<span
 								key={row.name}
-								className="shrink-0 truncate text-center text-[28px] text-muted-foreground"
-								style={{ width: columnWidth }}
+								/* A horizontal label is one line, so it has to be cut short
+								   when the column is narrower than the name. A vertical one
+								   stacks the characters instead and stays complete, but needs
+								   the flex centring: with `writing-mode` alone the line box
+								   hugs the right edge of the column and the name drifts off
+								   its bar. */
+								className={`shrink-0 text-center text-[28px] text-muted-foreground ${
+									labelOrientation === "horizontal"
+										? "truncate"
+										: "flex items-center justify-center"
+								}`}
+								style={{
+									width: columnWidth,
+									// Upright keeps Chinese characters stacked rather than
+									// rotated, which is what vertical text should look like.
+									writingMode:
+										labelOrientation === "vertical" ? "vertical-rl" : undefined,
+									textOrientation:
+										labelOrientation === "vertical" ? "upright" : undefined,
+								}}
 								title={row.name}
 							>
 								{row.name}

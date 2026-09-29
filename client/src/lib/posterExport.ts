@@ -1,13 +1,35 @@
 import { toBlob, toPng } from "html-to-image";
 
 /**
- * Export scale. The poster canvas is 1080 px wide; doubling it keeps the PNG
- * crisp when someone zooms in on a phone.
+ * Export scale. The poster canvases are fixed widths of roughly 1080–1240 px;
+ * doubling that keeps the PNG crisp when someone zooms in on a phone.
  */
 const DEFAULT_PIXEL_RATIO = 2;
 
 /** Filesystem-hostile characters a semester name could contain. */
 const UNSAFE_FILENAME_CHARS = /[\\/:*?"<>|]/g;
+
+/**
+ * Upper bound on the bitmap a poster export may allocate, in total pixels.
+ *
+ * html-to-image clones the poster into one canvas before encoding it, and a
+ * semester poster listing the whole roster runs to several thousand pixels in
+ * height: at the usual 2x that is a ~46 megapixel bitmap, which is enough to
+ * stall or fail on a modest machine. The canvases are already over 1000 px
+ * wide, so easing the scale back down towards 1x stays readable.
+ */
+const MAX_EXPORT_PIXELS = 20_000_000;
+
+/**
+ * Export scale for a canvas whose size is only known at runtime, i.e. one whose
+ * length follows the roster. Short posters keep the full `DEFAULT_PIXEL_RATIO`.
+ */
+export function posterPixelRatio(node: HTMLElement): number {
+	const area = node.offsetWidth * node.offsetHeight;
+	if (area <= 0) return DEFAULT_PIXEL_RATIO;
+	const fitted = Math.min(DEFAULT_PIXEL_RATIO, Math.sqrt(MAX_EXPORT_PIXELS / area));
+	return Math.max(1, Number(fitted.toFixed(2)));
+}
 
 /**
  * Rasterisation options shared by every export path. The poster is always
@@ -19,16 +41,29 @@ const RASTER_OPTIONS = {
 	cacheBust: true,
 } as const;
 
+/** `YYYYMMDD` stamp used by every poster filename. */
+function dateStamp(now: Date): string {
+	const pad = (value: number) => String(value).padStart(2, "0");
+	return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+}
+
 /** Build a stable filename for a downloaded poster. */
 export function posterFilename(
 	semesterName: string,
 	week: number,
 	now: Date = new Date(),
 ): string {
-	const pad = (value: number) => String(value).padStart(2, "0");
-	const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
 	const safeName = semesterName.replace(UNSAFE_FILENAME_CHARS, "-");
-	return `SMC周报统计-${safeName}-第${week}周-${stamp}.png`;
+	return `SMC周报统计-${safeName}-第${week}周-${dateStamp(now)}.png`;
+}
+
+/** Filename for the semester summary poster, which covers no single week. */
+export function semesterPosterFilename(
+	semesterName: string,
+	now: Date = new Date(),
+): string {
+	const safeName = semesterName.replace(UNSAFE_FILENAME_CHARS, "-");
+	return `SMC学期总结-${safeName}-${dateStamp(now)}.png`;
 }
 
 /**

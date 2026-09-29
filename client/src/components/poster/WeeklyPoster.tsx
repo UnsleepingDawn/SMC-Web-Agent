@@ -1,7 +1,8 @@
 "use client";
 
-import type { ReactNode, Ref } from "react";
+import type { Ref } from "react";
 import { PosterBarChart } from "@/components/poster/PosterBarChart";
+import { PosterSection, PosterStatPill } from "@/components/poster/PosterBlocks";
 import type { PosterDataBundle } from "@/hooks/usePosterData";
 import { nextSeminar, weekPeriod } from "@/lib/dashboardWeek";
 import { Semester, WEEKDAY_NAMES } from "@/lib/schema";
@@ -54,37 +55,6 @@ function formatGeneratedAt(date: Date): string {
 	return (
 		`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
 		`${pad(date.getHours())}:${pad(date.getMinutes())}`
-	);
-}
-
-function PosterSection({ title, children }: { title: string; children: ReactNode }) {
-	return (
-		<section className="space-y-[28px] border-t border-border pt-[40px]">
-			<h2 className="flex items-center gap-[16px] text-[40px] leading-none font-bold">
-				<span className="inline-block h-[36px] w-[8px] rounded bg-foreground" />
-				{title}
-			</h2>
-			{children}
-		</section>
-	);
-}
-
-function StatPill({
-	label,
-	value,
-	valueClassName,
-}: {
-	label: string;
-	value: number;
-	valueClassName?: string;
-}) {
-	return (
-		<div className="min-w-[180px] rounded-[16px] bg-secondary px-[28px] py-[18px]">
-			<p className="text-[26px] text-muted-foreground">{label}</p>
-			<p className={`text-[44px] leading-tight font-bold tabular-nums ${valueClassName ?? ""}`}>
-				{value}
-			</p>
-		</div>
 	);
 }
 
@@ -262,18 +232,18 @@ export function WeeklyPoster({
 						{seminarAttendance ? (
 							<>
 								<div className="flex flex-wrap gap-[18px]">
-									<StatPill label="应到" value={seminarAttendance.expected.length} />
-									<StatPill
+									<PosterStatPill label="应到" value={seminarAttendance.expected.length} />
+									<PosterStatPill
 										label="已出勤"
 										value={seminarAttendance.attended.length}
 										valueClassName="text-emerald-600"
 									/>
-									<StatPill
+									<PosterStatPill
 										label="未出勤"
 										value={seminarAttendance.absent.length}
 										valueClassName={seminarAttendance.absent.length ? "text-rose-600" : ""}
 									/>
-									<StatPill label="请假" value={seminarAttendance.leave.length} />
+									<PosterStatPill label="请假" value={seminarAttendance.leave.length} />
 								</div>
 								<p className="text-[28px] leading-snug">
 									<span className="font-medium">本周未出勤：</span>

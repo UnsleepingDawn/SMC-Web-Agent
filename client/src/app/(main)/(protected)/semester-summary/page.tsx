@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Loader2, RefreshCw } from "lucide-react";
+import {
+	ArrowDownWideNarrow,
+	ArrowUpNarrowWide,
+	ImageDown,
+	Loader2,
+	RefreshCw,
+} from "lucide-react";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { MemberFilterBar } from "@/components/members/MemberFilterBar";
 import { SemesterScoreChart } from "@/components/semester-summary/SemesterScoreChart";
 import { WeightPanel } from "@/components/semester-summary/WeightPanel";
-import { Badge } from "@/components/ui/badge";
+import { SemesterSummaryPosterDialog } from "@/components/poster/SemesterSummaryPosterDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,6 +53,12 @@ import {
 	rankRows,
 } from "@/lib/semesterScore";
 import {
+	type MetricCellText,
+	dailyCellText,
+	reportCellText,
+	seminarCellText,
+} from "@/lib/semesterSummaryText";
+import {
 	readSemesterSummaryView,
 	writeSemesterSummaryView,
 } from "@/lib/semesterSummaryView";
@@ -79,96 +91,23 @@ function SummaryStat({ label, value, hint }: { label: string; value: string; hin
 	);
 }
 
-/** A metric's rate, dimmed when the metric carries no data. */
+/** A metric's rate, bolded so it stands out from the counts beside it. */
 function Rate({ value }: { value: number | null }) {
-	return (
-		<span
-			className={cn(
-				"ml-1 font-medium text-foreground",
-				value === null && "text-muted-foreground",
-			)}
-		>
-			{formatRate(value)}
-		</span>
-	);
+	return <span className="ml-1 font-medium text-foreground">{formatRate(value)}</span>;
 }
 
 /**
- * Daily clock-ins. A member with nothing but excused or pending days has no
- * expected days at all, which the cell says outright instead of showing the
- * bare "缺卡 0、迟到 0" that reads like a clean record.
+ * One of the three metric cells, laid out from the shared wording so the table
+ * and the exported poster can never describe the same number differently.
  */
-function DailyCell({ daily }: { daily: SemesterSummaryRow["daily"] }) {
-	if (daily.expected === 0) {
-		const aside = [
-			daily.course > 0 ? `上课 ${daily.course}` : null,
-			daily.excused > 0 ? `无需打卡 ${daily.excused}` : null,
-			daily.pending > 0 ? `尚未打卡 ${daily.pending}` : null,
-		].filter((part): part is string => part !== null);
-		return (
-			<span className="block">
-				无日常考勤记录
-				{aside.length > 0 ? (
-					<span className="block text-[10px] opacity-80">
-						仅有：{aside.join("、")}
-					</span>
-				) : null}
-			</span>
-		);
-	}
+function MetricCell({ text }: { text: MetricCellText }) {
 	return (
 		<span className="block">
-			缺卡 {daily.absent}、迟到 {daily.late}
-			{daily.course > 0 ? `、上课 ${daily.course}` : ""}
-			<Rate value={daily.rate} />
-			{daily.excused > 0 || daily.pending > 0 ? (
-				<span className="block text-[10px] opacity-80">
-					不计入：无需打卡 {daily.excused}
-					{daily.pending > 0 ? `、尚未打卡 ${daily.pending}` : ""}
-				</span>
+			{text.primary}
+			{text.rate === null ? null : <Rate value={text.rate} />}
+			{text.secondary ? (
+				<span className="block text-[10px] opacity-80">{text.secondary}</span>
 			) : null}
-		</span>
-	);
-}
-
-/**
- * Seminar weeks. With no eligible week at all the cell falls back to saying
- * why: either the member has no seminar row whatsoever, meaning nobody ever
- * asked them to attend, or every week was exempted by a course or a leave.
- */
-function SeminarCell({ seminar }: { seminar: SemesterSummaryRow["seminar"] }) {
-	if (seminar.eligible === 0 && seminar.attended === 0) {
-		if (seminar.course === 0 && seminar.leave === 0) {
-			return <span className="block">无组会出勤记录</span>;
-		}
-		const aside = [
-			seminar.course > 0 ? `上课 ${seminar.course}` : null,
-			seminar.leave > 0 ? `请假 ${seminar.leave}` : null,
-		].filter((part): part is string => part !== null);
-		return (
-			<span className="block">
-				应到 0 周
-				<span className="block text-[10px] opacity-80">
-					全部豁免：{aside.join("、")}
-				</span>
-			</span>
-		);
-	}
-	return (
-		<span className="block">
-			实到 {seminar.attended} / 应到 {seminar.eligible}
-			{seminar.leave > 0 ? `、请假 ${seminar.leave}` : ""}
-			<Rate value={seminar.rate} />
-		</span>
-	);
-}
-
-/** Weekly-report submissions; every week 1..end_week is due a report. */
-function ReportCell({ report }: { report: SemesterSummaryRow["weekly_report"] }) {
-	return (
-		<span className="block">
-			提交 {report.submitted} / 应提交 {report.expected}
-			<Rate value={report.rate} />
 		</span>
 	);
 }
@@ -190,6 +129,7 @@ export default function SemesterSummaryPage() {
 	const [worstFirst, setWorstFirst] = useState(true);
 	/** False until the stored view has been applied, so it is not overwritten. */
 	const [isViewRestored, setIsViewRestored] = useState(false);
+	const [isPosterOpen, setIsPosterOpen] = useState(false);
 
 	// The stored view is applied after mount rather than while rendering: reading
 	// localStorage during the first render would make the client's markup differ
@@ -367,6 +307,14 @@ export default function SemesterSummaryPage() {
 							}}
 							className="w-24"
 						/>
+						<Button
+							variant="outline"
+							onClick={() => setIsPosterOpen(true)}
+							disabled={isLoading || filteredRows.length === 0}
+						>
+							<ImageDown className="mr-2 h-4 w-4" />
+							生成海报
+						</Button>
 						<Button variant="outline" onClick={refetch} disabled={isLoading}>
 							{isLoading ? (
 								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -509,7 +457,6 @@ export default function SemesterSummaryPage() {
 											<TableHead>{METRIC_LABELS.seminar}</TableHead>
 											<TableHead>{METRIC_LABELS.weekly_report}</TableHead>
 											<TableHead>综合得分</TableHead>
-											<TableHead>状态</TableHead>
 										</TableRow>
 									</TableHeader>
 									<TableBody>
@@ -518,7 +465,16 @@ export default function SemesterSummaryPage() {
 											return (
 												<TableRow key={row.name}>
 													<TableCell className="font-medium">
-														{row.name}
+														{/* The bottom share is called out by the name alone: a separate
+														    status column said the same thing twice. */}
+														<span
+															className={cn(
+																item.isBottom &&
+																	"inline-block rounded-md bg-destructive px-2 py-0.5 text-white",
+															)}
+														>
+															{row.name}
+														</span>
 														{item.rank ? (
 															<span className="ml-2 text-xs text-muted-foreground tabular-nums">
 																倒数第 {item.rank} 名
@@ -531,28 +487,19 @@ export default function SemesterSummaryPage() {
 														className="text-xs text-muted-foreground"
 														title="出勤率只按正常、迟到、缺卡三类计算；课程豁免、无需打卡与尚未打卡不计入应到天数。"
 													>
-														<DailyCell daily={row.daily} />
+														<MetricCell text={dailyCellText(row.daily)} />
 													</TableCell>
 													<TableCell
 														className="text-xs text-muted-foreground"
 														title="应到周数不含请假周与当周组会时段有课的周。"
 													>
-														<SeminarCell seminar={row.seminar} />
+														<MetricCell text={seminarCellText(row.seminar)} />
 													</TableCell>
 													<TableCell className="text-xs text-muted-foreground">
-														<ReportCell report={row.weekly_report} />
+														<MetricCell text={reportCellText(row.weekly_report)} />
 													</TableCell>
 													<TableCell className="tabular-nums">
 														{formatRate(item.score)}
-													</TableCell>
-													<TableCell>
-														{item.score === null ? (
-															<Badge variant="secondary">数据不足</Badge>
-														) : item.isBottom ? (
-															<Badge variant="destructive">重点关注</Badge>
-														) : (
-															<Badge variant="outline">正常</Badge>
-														)}
 													</TableCell>
 												</TableRow>
 											);
@@ -564,6 +511,17 @@ export default function SemesterSummaryPage() {
 					</Card>
 				</>
 			)}
+
+			{summary && filteredRows.length > 0 ? (
+				<SemesterSummaryPosterDialog
+					open={isPosterOpen}
+					onOpenChange={setIsPosterOpen}
+					semester={summary.semester}
+					endWeek={activeEndWeek}
+					rows={tableRows}
+					chartRows={chartRows}
+				/>
+			) : null}
 
 			<p className="text-xs text-muted-foreground">
 				成员名单取自该学期自身的数据（日常考勤、组会出勤、周报、组会请假），正在进行的学期另加考勤组在册人员；某个学期里完全没有记录的成员不会出现在表中。组会出勤只对该学期留下过考勤或组会记录的同学判定，不参照今天的考勤组。缺少数据的那一项显示为「—」且不参与加权。改权重与筛选只影响本页展示，不会修改任何数据；这些设置会记住，下次打开仍是同一套。
