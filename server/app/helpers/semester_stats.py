@@ -162,12 +162,24 @@ def seminar_roster(
 
     Seminars are owed by whoever was on the attendance roster, and the proof of
     that is a row of the semester's own: a clock-in, a seminar attendance or a
-    seminar leave. The attendance group is deliberately left out even while the
-    term is running -- it describes who is due *today*, so unioning it in would
-    judge everyone who joined later on seminars that were never theirs. A
+    seminar leave. The attendance group is deliberately not unioned in even
+    while the term is running -- it describes who is due *today*, so adding it
+    would judge everyone who joined later on seminars that were never theirs. A
     member with nothing but weekly reports was never asked to attend either.
+
+    While the term is still running the group is used the other way round, to
+    narrow the roster: leaving it withdraws the seminar duty, but the clock-in
+    rows written before the member left stay in the database and would otherwise
+    keep charging them for every seminar since. A finished semester is never
+    narrowed this way -- the group has moved on since, so "no longer in it"
+    would describe everyone.
     """
-    return semester_data_names(db, semester, daily_names=daily_names, report_names=())
+    names = semester_data_names(
+        db, semester, daily_names=daily_names, report_names=()
+    )
+    if running_semester(db, semester):
+        names = names & set(expected_names(db))
+    return names
 
 
 def seminar_weekday(db: Session, semester: Semester, week: int) -> int:
